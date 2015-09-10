@@ -103,6 +103,10 @@ encoder = stack(autoenc1, autoenc2, autoenc3, autoenc4);
 decoder = stack(get_decoder(autoenc4), get_decoder(autoenc3), get_decoder(autoenc2), get_decoder(autoenc1));
 net = stack(encoder, decoder);
 
+% Get features
+enc_train_feat = encoder(train_images);
+enc_test_feat = encoder(test_images);
+
 %% Fine-tune the whole network
 net.trainParam.epochs = Niter_fine;
 net.trainParam.showWindow = true;
@@ -110,6 +114,9 @@ net_fine = net;
 
 % ATTENTION: All code below this point can be re-run to further fine tine the net
 net_fine = train(net_fine, train_images, train_images);
+save('net_fine.mat', 'net_fine');
+
+% Get efor fineworked network
 enc_fine = stack(get_layer(net_fine, 1), get_layer(net_fine,2), get_layer(net_fine, 3), get_layer(net_fine, 4));
 
 %% Get a PCA for the training images
@@ -136,17 +143,17 @@ colormap gray
 pca_test_feat = (test_images'-repmat(mu,Ntest,1)) * c;
 model_knn_pca = fitcknn(pca_train_feat, train_labels, 'NumNeighbors', 5);
 output_labels_pca = model_knn_pca.predict(pca_test_feat);
-fprintf('PCA(%d) classification rrror rate: %.2f %%\n', l4size, 100 * sum(output_labels_pca ~= test_labels') / Ntest);
+fprintf('PCA(%d) classification rrror rate: %.2f %%\n', l4size, 100 * sum(output_labels_pca ~= test_labels) / Ntest);
 
 % Network
-model_enc = fitcknn(encoder(train_images)', train_labels, 'NumNeighbors', 5);
-output_labels_enc = model_enc.predict(encoder(test_images)');
-fprintf('NN error rate: %.2f %%\n', 100 * sum(output_labels_enc ~= test_labels') / Ntest);
+model_enc = fitcknn(enc_train_feat', train_labels, 'NumNeighbors', 5);
+output_labels_enc = model_enc.predict(enc_test_feat');
+fprintf('NN error rate: %.2f %%\n', 100 * sum(output_labels_enc ~= test_labels) / Ntest);
 
 % Fine tuned network
 model_encfine = fitcknn(enc_fine(train_images)', train_labels, 'NumNeighbors', 5);
 output_labels_encfine = model_encfine.predict(enc_fine(test_images)');
-fprintf('Fine-tuned NN error rate: %.2f %%\n', 100 * sum(output_labels_encfine ~= test_labels') / Ntest);
+fprintf('Fine-tuned NN error rate: %.2f %%\n', 100 * sum(output_labels_encfine ~= test_labels) / Ntest);
 
 % % Also for Hinton's DBN
 % load mnist_weights
