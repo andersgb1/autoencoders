@@ -24,11 +24,13 @@ l4size = 30;
 % Use the helper functions to load the training/test images and labels
 % (column-major)
 [train_images, train_labels, test_images, test_labels] = load_mnist;
+size(train_images)
+size(train_labels)
 
 if Nreduce > 0
     warning('Reducing training set to %d examples...', Nreduce);
     train_images = train_images(:,1:Nreduce);
-    train_labels = train_labels(:,1:Nreduce);
+    train_labels = train_labels(1:Nreduce);
 end
 
 % Number of training/test cases
