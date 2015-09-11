@@ -1,7 +1,6 @@
-function [train_images, train_labels, test_images, test_labels] = load_mnist
+function [train_images, train_labels, test_images, test_labels] = load_mnist(rootpath)
 
-rootpath = 'mnist';
-assert(exist(rootpath, 'dir') == 7);
+assert(exist(rootpath, 'dir') > 0);
 
 files= {'train-images-idx3-ubyte',...
     'train-labels-idx1-ubyte',...
