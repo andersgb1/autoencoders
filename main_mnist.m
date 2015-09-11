@@ -4,7 +4,7 @@
 %% Setup parameters for script
 
 % Set to true to disable loading existing autoencoders
-force_training = true;
+force_training = false;
 
 % Set to a positive value to reduce training set
 Nreduce = 10000;
@@ -24,8 +24,6 @@ l4size = 30;
 % Use the helper functions to load the training/test images and labels
 % (column-major)
 [train_images, train_labels, test_images, test_labels] = load_mnist;
-size(train_images)
-size(train_labels)
 
 if Nreduce > 0
     warning('Reducing training set to %d examples...', Nreduce);
@@ -40,18 +38,19 @@ Ntest = length(test_labels);
 % Ensure deterministic results
 rng('default')
 
+%% Load (or train) the autoencoders
 if ~force_training &&...
-        exist('autoenc1.mat', 'file') &&...
-        exist('autoenc2.mat', 'file') &&...
-        exist('autoenc3.mat', 'file') &&...
-        exist('autoenc4.mat', 'file')
+        exist('data/autoenc1.mat', 'file') &&...
+        exist('data/autoenc2.mat', 'file') &&...
+        exist('data/autoenc3.mat', 'file') &&...
+        exist('data/autoenc4.mat', 'file')
     disp 'Loading pretrained autoencoders from files...'
-    load autoenc1.mat
-    load autoenc2.mat
-    load autoenc3.mat
-    load autoenc4.mat
+    load data/autoenc1.mat
+    load data/autoenc2.mat
+    load data/autoenc3.mat
+    load data/autoenc4.mat
 else
-    %% Training the first autoencoder
+    % Training the first autoencoder
 
     % Set the size of the hidden layer for the autoencoder. For the autoencoder
     % that you are going to train, it is a good idea to make this smaller than
@@ -63,9 +62,9 @@ else
         'SparsityRegularization',4, ...
         'SparsityProportion',0.15, ...
         'ScaleData', false);
-    save('autoenc1.mat', 'autoenc1');
-
-    %% Training the second autoencoder
+    save('data/autoenc1.mat', 'autoenc1');
+    
+    % More layers
     feat1 = encode(autoenc1,train_images);
     autoenc2 = trainAutoencoder(feat1,l2size, ...
         'MaxEpochs',Niter_init, ...
@@ -74,9 +73,8 @@ else
         'SparsityRegularization',4, ...
         'SparsityProportion',0.1, ...
         'ScaleData', false);
-    save('autoenc2.mat', 'autoenc2');
+    save('data/autoenc2.mat', 'autoenc2');
 
-    %% More layers
     feat2 = encode(autoenc2,feat1);
     autoenc3 = trainAutoencoder(feat2,l3size, ...
         'MaxEpochs',Niter_init, ...
@@ -85,7 +83,7 @@ else
         'SparsityRegularization',4, ...
         'SparsityProportion',0.1, ...
         'ScaleData', false);
-    save('autoenc3.mat', 'autoenc3');
+    save('data/autoenc3.mat', 'autoenc3');
 
     feat3 = encode(autoenc3,feat2);
     autoenc4 = trainAutoencoder(feat3,l4size, ...
@@ -95,28 +93,35 @@ else
         'SparsityRegularization',4, ...
         'SparsityProportion',0.1, ...
         'ScaleData', false);
-    save('autoenc4.mat', 'autoenc4');
+    save('data/autoenc4.mat', 'autoenc4');
+    
+    clear feat1 feat2 feat3;
 end
 
 %% Stack the autoencoders
 encoder = stack(autoenc1, autoenc2, autoenc3, autoenc4);
 decoder = stack(get_decoder(autoenc4), get_decoder(autoenc3), get_decoder(autoenc2), get_decoder(autoenc1));
 net = stack(encoder, decoder);
+net.trainParam.epochs = Niter_fine;
+net.trainParam.showWindow = true;
 
 % Get features
 enc_train_feat = encoder(train_images);
 enc_test_feat = encoder(test_images);
 
-%% Fine-tune the whole network
-net.trainParam.epochs = Niter_fine;
-net.trainParam.showWindow = true;
-net_fine = net;
+% Clearn up
+clear autoenc1 autoenc2 autoenc3 autoenc4 encoder decoder;
 
-% ATTENTION: All code below this point can be re-run to further fine tine the net
-net_fine = train(net_fine, train_images, train_images);
-save('net_fine.mat', 'net_fine');
+%% Fine tune (or load fine tuned) network
+if ~force_training && exist('data/net_fine.mat', 'file')
+    disp 'Loading pretrained fine tuned network file...'
+    load data/net_fine.mat;
+else
+    net_fine = train(net, train_images, train_images);
+    save('data/net_fine.mat', 'net_fine');
+end
 
-% Get efor fineworked network
+% Get encoder for fine tuned network
 enc_fine = stack(get_layer(net_fine, 1), get_layer(net_fine,2), get_layer(net_fine, 3), get_layer(net_fine, 4));
 
 %% Get a PCA for the training images
@@ -143,7 +148,7 @@ colormap gray
 pca_test_feat = (test_images'-repmat(mu,Ntest,1)) * c;
 model_knn_pca = fitcknn(pca_train_feat, train_labels, 'NumNeighbors', 5);
 output_labels_pca = model_knn_pca.predict(pca_test_feat);
-fprintf('PCA(%d) classification rrror rate: %.2f %%\n', l4size, 100 * sum(output_labels_pca ~= test_labels) / Ntest);
+fprintf('PCA(%d) classification error rate: %.2f %%\n', l4size, 100 * sum(output_labels_pca ~= test_labels) / Ntest);
 
 % Network
 model_enc = fitcknn(enc_train_feat', train_labels, 'NumNeighbors', 5);
