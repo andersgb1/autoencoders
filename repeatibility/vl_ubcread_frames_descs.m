@@ -17,9 +17,8 @@ function [f,d] = vl_ubcread_frames_descs(file, varargin)
 % This file is part of the VLFeat library and is made available under
 % the terms of the BSD license (see the COPYING file).
 
-opts.verbosity = 0 ;
-opts.format = 'ubc' ;
-opts = vl_argparse(opts, varargin) ;
+opts.verbosity = 0;
+opts.format = 'oxford' ;
 
 g = fopen(file, 'r');
 if g == -1
