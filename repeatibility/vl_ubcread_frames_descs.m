@@ -81,7 +81,7 @@ for k = 1:numKeypoints
 
 
 	% Record format: descriptor
-	[record, count] = fscanf(g, '%d', [1 descrLen]) ;
+	[record, count] = fscanf(g, '%f', [1 descrLen]) ;
 	if count ~= descrLen
 		error(...
 			sprintf('Invalid keypoint file (parsing keypoint %d, descriptor part)',k) );
@@ -110,7 +110,8 @@ switch opts.format
     P(1:2,:) = P(1:2,:) + 1 ; % matlab origin
     f = P  ;
     f(3:5,:) = inv2x2(f(3:5,:)) ;
-    d = uint8(L) ;
+%     d = uint8(L) ;
+    d=L;
 end
 
 

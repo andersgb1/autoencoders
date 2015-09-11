@@ -22,7 +22,7 @@ l4size = 30;
 %% Load data
 % Use the helper functions to load the training images (column-major)
 [~, train_images] = vl_ubcread_frames_descs('repeatibility/graf/img1.ppm.hesaff.patch', 'format', 'oxford');
-train_images = double(train_images) / 255;
+train_images = train_images / 255;
 
 % Reduce training set
 if Nreduce > 0
