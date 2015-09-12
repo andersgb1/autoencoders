@@ -1,4 +1,4 @@
-function f = vl_ubcread_frames(file, varargin)
+function f = vl_ubcread_frames(file)
 % SIFTREAD Read Lowe's SIFT implementation data files
 %   F = VL_UBCREAD(FILE) reads the frames F in the format used by
 %   Oxford VGG implementations .
@@ -7,7 +7,6 @@ function f = vl_ubcread_frames(file, varargin)
 
 opts.verbosity = 0 ;
 opts.format = 'oxford' ;
-opts = vl_argparse(opts, varargin) ;
 
 g = fopen(file, 'r');
 if g == -1
