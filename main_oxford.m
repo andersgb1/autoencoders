@@ -20,9 +20,26 @@ l3size = 250;
 l4size = 30;
 
 %% Load data
+% Image root path
+root='repeatibility/graf';
+
+% Image(s) to consider
+idxx = {'1', '2', '3', '4', '5', '6'};
+
+% Detector
+% Oxford detectors: har, harlap, heslap, haraff, hesaff
+% VLFeat detectors: dog, hessian, hessianlaplace, harrislaplace, multiscalehessian, multiscaleharris
+detector='hesaff';
+
 % Use the helper functions to load the training images (column-major)
-[~, train_images] = vl_ubcread_frames_descs('repeatibility/graf/img1.ppm.hesaff.patch', 'format', 'oxford');
-train_images = train_images / 255;
+train_images = [];
+for i=1:numel(idxx)
+    idx = idxx{i};
+    pfile = [root '/img' idx '.ppm.' detector '.patch'];
+    assert(exist(pfile, 'file') > 0);
+    [~, tmp] = vl_ubcread_frames_descs('repeatibility/graf/img1.ppm.hesaff.patch');
+    train_images = [train_images tmp];
+end
 
 % Reduce training set
 if Nreduce > 0
