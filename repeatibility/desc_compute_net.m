@@ -1,7 +1,7 @@
 clear;clc;
 
 % Image root path
-root='graf';
+root='repeatibility/graf';
 
 % Image(s) to consider
 idxx = {'1', '2', '3', '4', '5', '6'};
@@ -71,14 +71,12 @@ for idxc = idxx
     %% NN section
     if idx == '1'
         % Get network
-        load ../data/patch_net_fine.mat
+        load data/patch_net_fine.mat
         
         % Get encoder
         enc_fine = stack(get_layer(net_fine, 1), get_layer(net_fine,2), get_layer(net_fine, 3), get_layer(net_fine, 4));
     end
     assert(exist('net_fine', 'var') > 0 && exist('enc_fine', 'var') > 0);
-    
-    
     
     % If network input and patch sizes mismatch, rescale all patches
     if net_fine.input.size ~= size(patches,1)
