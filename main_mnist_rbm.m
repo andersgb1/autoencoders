@@ -6,7 +6,7 @@ close all;
 force_training = false;
 
 % Set to a positive value to reduce training set
-Nreduce = 1e4;
+Nreduce = 0;
 
 % Number of training iterations for the individual layers and for the final
 % fine tuning
