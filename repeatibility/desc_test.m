@@ -16,13 +16,14 @@ detector = 'hesaff';
 % Oxford descriptors: jla, sift, gloh, mom, koen, cf, sc, spin, pca, cc
 % VLFeat descriptors: sift_vl, liop, patch
 % Our descriptors: pca
-descs = {'sift', 'liop', 'pca', 'enc'};
+descs = {'sift', 'pca', 'enc'};
 
 % Matching type
 % nn, sim, ratio
 mtype = 'sim'; % Mikolajczyk et al. used 'sim', while the LIOP folks used 'ratio'
 
-% Allocate plot data
+% Allocate plot data (the 20 comes from the external evaluation script for
+% repeatibility)
 precision_nn = zeros(20, numel(descs));
 recall_nn = zeros(20, numel(descs));
 precision_sim = zeros(20, numel(descs));
