@@ -83,7 +83,8 @@ for epoch = 1:max_epochs
         % Verbosity
         if verbose
             for i = 1:chars, fprintf('\b'); end
-            chars = fprintf('%i/%i\n', batch_end, N);
+            chars = fprintf('%i/%i', batch_end, N);
+            if batch_end == N, fprintf('\n'); end
         end
         
         % Get batch data

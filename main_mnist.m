@@ -110,7 +110,7 @@ net.trainParam.showWindow = true;
 enc_train_feat = encoder(train_images);
 enc_test_feat = encoder(test_images);
 
-% Clearn up
+% Clean up
 clear autoenc1 autoenc2 autoenc3 autoenc4 encoder decoder;
 
 %% Fine tune (or load fine tuned) network
@@ -126,10 +126,12 @@ end
 enc_fine = stack(get_layer(net_fine, 1), get_layer(net_fine,2), get_layer(net_fine, 3), get_layer(net_fine, 4));
 
 %% Get a PCA for the training images
+disp 'Getting a PCA...'
 [c,~,~,~,~,mu] = pca(train_images', 'NumComponents', l4size);
 pca_train_feat = (train_images'-repmat(mu,Ntrain,1)) * c;
 
 %% Present reconstruction errors
+disp 'Presenting results...'
 % Reconstructions of training data before/after fine tuning and using PCA
 net_train_rec = net(train_images);
 net_fine_train_rec = net_fine(train_images);
