@@ -52,14 +52,15 @@ Bhid = zeros(1, num_hidden);
 
 %% Prepare other stuff
 if visualize
-    figure('Name', 'RBM')
-    h1 = subplot(221);
-    h2 = subplot(222);
-    h3 = subplot(223);
-    h4 = subplot(224);
+    figname = 'RBM';
+    if ~isempty(findobj('type', 'figure', 'name', figname)), close(figname); end
+    figure('Name', figname)
+    h1 = subplot(131);
+    h2 = subplot(132);
+    h3 = subplot(133);
 end
 
-%% TODO
+%% Setup mini-batches
 Nbatch = 1;
 if num_batches > 1, Nbatch = floor(N / num_batches); end
 
@@ -76,7 +77,8 @@ for epoch = 1:max_epochs
     error = 0;
     chars = 0;
     for batch_begin = 1:Nbatch:N
-        batch_end = batch_begin + Nbatch - 1;
+        batch_end = min([batch_begin + Nbatch - 1, N]);
+        batch_size = batch_end - batch_begin + 1;
         
         % Verbosity
         if verbose
@@ -95,8 +97,8 @@ for epoch = 1:max_epochs
         % (This is the "positive CD phase", aka the reality phase.)
         pos_hidden_activations = Xb * W;
     %     pos_hidden_probs = logistic(pos_hidden_activations);
-        pos_hidden_probs = logistic(pos_hidden_activations + repmat(Bhid, Nbatch, 1));
-        pos_hidden_states = pos_hidden_probs > rand(Nbatch, num_hidden);
+        pos_hidden_probs = logistic(pos_hidden_activations + repmat(Bhid, batch_size, 1));
+        pos_hidden_states = pos_hidden_probs > rand(batch_size, num_hidden);
         % Note that we're using the activation *probabilities* of the hidden states, not the hidden states       
         % themselves, when computing associations. We could also use the states; see section 3 of Hinton's 
         % "A Practical Guide to Training Restricted Boltzmann Machines" for more.
@@ -105,36 +107,36 @@ for epoch = 1:max_epochs
         % Reconstruct the visible units and sample again from the hidden units.
         % (This is the "negative CD phase", aka the daydreaming phase.)
         neg_visible_activations = pos_hidden_states * W';
-        neg_visible_probs = logistic(neg_visible_activations + repmat(Bvis, Nbatch, 1));
+        neg_visible_probs = logistic(neg_visible_activations + repmat(Bvis, batch_size, 1));
     %     neg_visible_probs(:,1) = 1; % Fix the bias unit
         neg_hidden_activations = neg_visible_probs * W;
     %     neg_hidden_probs = logistic(neg_hidden_activations);
-        neg_hidden_probs = logistic(neg_hidden_activations + repmat(Bhid, Nbatch, 1));
+        neg_hidden_probs = logistic(neg_hidden_activations + repmat(Bhid, batch_size, 1));
         % Note, again, that we're using the activation *probabilities* when computing associations, not the states
         % themselves.
         neg_associations = neg_visible_probs' * neg_hidden_probs;
 
         % Update weights
-        W = W + learning_rate * (pos_associations - neg_associations) / Nbatch;
+        W = W + learning_rate * (pos_associations - neg_associations) / batch_size;
 
         pos_vis_act = sum(Xb);
         neg_vis_act = sum(neg_visible_probs);
-        Bvis = Bvis + learning_rate * (pos_vis_act - neg_vis_act) / Nbatch;
+        Bvis = Bvis + learning_rate * (pos_vis_act - neg_vis_act) / batch_size;
 
         pos_hid_act = sum(pos_hidden_probs);
         neg_hid_act = sum(neg_hidden_probs);
-        Bhid = Bhid + learning_rate * (pos_hid_act - neg_hid_act) / Nbatch;
+        Bhid = Bhid + learning_rate * (pos_hid_act - neg_hid_act) / batch_size;
 
         % Compute error
         error = error + sse(Xb - neg_visible_probs);
     end
     
     % Store performance
-    perf(epoch) = error;
+    perf(epoch) = error/numel(X);
     
     % Verbosity
     if verbose
-        fprintf('Error (SSE/MSE): %.0f/%.5f\n', error, error/numel(X));
+        fprintf('Error (SSE/MSE): %.0f/%.5f\n', error, perf(epoch));
         fprintf('Computation time [s]: %.5f\n', toc);
     end
     
@@ -145,7 +147,7 @@ for epoch = 1:max_epochs
         xlim(h1, [0.9 epoch+1.1])
         ylim(h1, [0 perf(1)])
         xlabel(h1, 'Epoch')
-        ylabel(h1, 'Performance (SSE)')
+        ylabel(h1, 'Performance (MSE)')
         set(h1, 'color', [0 0 0])
         
         % Show first image
@@ -153,13 +155,9 @@ for epoch = 1:max_epochs
         imshow(reshape(Xb(1,:)', [wh wh]), 'parent', h2) % Avoid the bias unit
         title(h2, 'Image')
         
-        % Show visible biases
-        imshow(reshape(Bvis', [wh wh]), [min(Bvis) max(Bvis)], 'parent', h3);
-        title(h3, 'Visible biases')
-        
         % Show reconstruction
-        imshow(reshape(neg_visible_probs(1,:)', [wh wh]), 'parent', h4) % Avoid the bias unit
-        title(h4, 'Reconstruction')
+        imshow(reshape(neg_visible_probs(1,:)', [wh wh]), 'parent', h3) % Avoid the bias unit
+        title(h3, 'Reconstruction')
         
         % Update figures
         colormap gray
