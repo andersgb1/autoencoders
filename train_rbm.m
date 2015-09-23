@@ -61,9 +61,10 @@ if visualize
     figname = 'RBM';
     if ~isempty(findobj('type', 'figure', 'name', figname)), close(figname); end
     figure('Name', figname)
-    h1 = subplot(131);
-    h2 = subplot(132);
-    h3 = subplot(133);
+    h1 = subplot(221);
+    h2 = subplot(222);
+    h3 = subplot(223);
+    h4 = subplot(224);
 end
 
 %% Setup mini-batches
@@ -159,12 +160,18 @@ for epoch = 1:max_epochs
         
         % Show first image
         wh = sqrt(num_visible);
-        imshow(reshape(Xb(1,:)', [wh wh]), 'parent', h2) % Avoid the bias unit
+        imshow(reshape(Xb(1,:)', [wh wh]), 'parent', h2)
         title(h2, 'Image')
         
         % Show reconstruction
-        imshow(reshape(neg_visible_probs(1,:)', [wh wh]), 'parent', h3) % Avoid the bias unit
+        imshow(reshape(neg_visible_probs(1,:)', [wh wh]), 'parent', h3)
         title(h3, 'Reconstruction')
+        
+        % Show first neuron, if possible
+        if round(wh) == wh
+            imshow(reshape(W(:,1), [wh wh]), 'parent', h4)
+            title(h4, 'First neuron')
+        end
         
         % Update figures
         colormap gray
