@@ -114,7 +114,6 @@ net.trainParam.showWindow = true;
 
 % Get features
 enc_train_feat = encoder(train_images);
-enc_test_feat = encoder(test_images);
 
 %% Fine tune (or load fine tuned) network
 if ~force_training && exist('data/patch_rbm_fine.mat', 'file')
@@ -144,8 +143,16 @@ fprintf('NN reconstruction error: %.4f\n', mse(net_train_rec - train_images));
 fprintf('Fine-tuned NN reconstruction error: %.4f\n', mse(net_fine_train_rec - train_images));
 idx = randi(Ntrain);
 wh = sqrt(size(train_images,1)); % Image width/height
+figure('Name', 'Example')
 subplot(221),imagesc(reshape(train_images(:,idx), [wh wh])),title('Input image')
 subplot(222),imagesc(reshape(pca_train_rec(idx,:)', [wh wh])),title('PCA reconstruction')
 subplot(223),imagesc(reshape(net_train_rec(:,idx), [wh wh])),title('NN reconstruction')
 subplot(224),imagesc(reshape(net_fine_train_rec(:,idx), [wh wh])),title('Fine-tuned NN reconstruction')
+colormap gray
+
+%% Show some 1-layer unit weights
+figure('Name', '1-layer encoder weights')
+for i=1:100
+    subplot(10,10,i),imagesc(reshape(net_fine.IW{1}(1,:)',wh,wh))
+end
 colormap gray
