@@ -10,7 +10,11 @@ function [enc,dec] = train_rbm(X, num_hidden, varargin)
 %
 %       'MaxEpochs' (50): number of training iterations
 %
+%       'NumBatches' (100): number of mini-batches
+%
 %       'LearningRate' (0.1): learning rate
+%
+%       'Regularizer' (0.0002): regularizer for the weight update
 %
 %       'Verbose' (false): logical, set to true to print status messages
 %
@@ -25,6 +29,7 @@ p.addOptional('RowMajor', true, @islogical)
 p.addOptional('MaxEpochs', 50, @isnumeric)
 p.addOptional('NumBatches', 100, @isnumeric)
 p.addOptional('LearningRate', 0.1, @isfloat)
+p.addOptional('Regularizer', 0.0002, @isfloat)
 p.addOptional('Verbose', false, @islogical)
 p.addOptional('Visualize', false, @islogical)
 p.parse(varargin{:});
@@ -32,6 +37,7 @@ p.parse(varargin{:});
 row_major = p.Results.RowMajor;
 max_epochs = p.Results.MaxEpochs;
 num_batches = p.Results.NumBatches;
+regularizer = p.Results.Regularizer;
 learning_rate = p.Results.LearningRate;
 verbose = p.Results.Verbose;
 visualize = p.Results.Visualize;
@@ -118,7 +124,7 @@ for epoch = 1:max_epochs
         neg_associations = neg_visible_probs' * neg_hidden_probs;
 
         % Update weights
-        W = W + learning_rate * (pos_associations - neg_associations) / batch_size;
+        W = W + learning_rate * ( (pos_associations - neg_associations) / batch_size - regularizer * W );
 
         pos_vis_act = sum(Xb);
         neg_vis_act = sum(neg_visible_probs);

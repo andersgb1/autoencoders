@@ -129,6 +129,7 @@ fprintf('NN reconstruction error: %.4f\n', mse(net_train_rec - train_images));
 fprintf('Fine-tuned NN reconstruction error: %.4f\n', mse(net_fine_train_rec - train_images));
 idx = randi(Ntrain);
 wh = sqrt(size(train_images,1)); % Image width/height
+figure('Name', 'Example')
 subplot(221),imagesc(reshape(train_images(:,idx), [wh wh])),title('Input image')
 subplot(222),imagesc(reshape(pca_train_rec(idx,:)', [wh wh])),title('PCA reconstruction')
 subplot(223),imagesc(reshape(net_train_rec(:,idx), [wh wh])),title('NN reconstruction')
@@ -151,3 +152,10 @@ fprintf('NN error rate: %.2f %%\n', 100 * sum(output_labels_enc ~= test_labels) 
 model_encfine = fitcknn(enc_fine(train_images)', train_labels, 'NumNeighbors', 5);
 output_labels_encfine = model_encfine.predict(enc_fine(test_images)');
 fprintf('Fine-tuned NN error rate: %.2f %%\n', 100 * sum(output_labels_encfine ~= test_labels) / Ntest);
+
+%% Show some 1-layer unit weights
+figure('Name', '1-layer encoder weights')
+for i=1:100
+    subplot(10,10,i),imagesc(reshape(net_fine.IW{1}(i,:)',wh,wh))
+end
+colormap gray

@@ -1,4 +1,4 @@
-function [erro,repeat,corresp, match_score,matches, twi]=myrepeatability(file1,file2,Hom,imf1,imf2, common_part)
+function [erro,repeat,corresp, match_score,matches, twi]=repeatability(file1,file2,Hom,imf1,imf2, common_part)
 %
 %
 %Computes repeatability and overlap score between two lists of features
@@ -38,8 +38,8 @@ function [erro,repeat,corresp, match_score,matches, twi]=myrepeatability(file1,f
 
 fprintf(1,'Reading and sorting the regions...\n');
 
-[f1 s1 dimdesc1]=loadFeatures(file1);
-[f2 s2 dimdesc2]=loadFeatures(file2);
+[f1, s1, dimdesc1]=loadFeatures(file1);
+[f2, s2, dimdesc2]=loadFeatures(file2);
 
 H=load(Hom);
 
@@ -48,12 +48,12 @@ fprintf(1,'nb of regions in file1 %d - descriptor dimension %d.\n',s1,dimdesc1);
 fprintf(1,'nb of regions in file2 %d - descriptor dimension %d.\n',s2,dimdesc2);
 
 
-if size(f1,1)==5 & size(f1,1)==size(f2,1) 
+if size(f1,1)==5 && size(f1,1)==size(f2,1) 
 fprintf(1,'%s looks like file with affine regions...\n',file1);
-  if  size(f1,1)~= 5 | size(f1,1) ~= 5
+  if  size(f1,1)~= 5 || size(f1,1) ~= 5
     error('Wrong ascii format of %s or %s files.',file1,file2);
   end
-elseif dimdesc1>1 & dimdesc1==dimdesc2 
+elseif dimdesc1>1 && dimdesc1==dimdesc2 
   fprintf(1,'%s, %s look like files with descriptors...\n',file1,file2);
 else
     error('Different descriptor dimension in %s or %s files.',file1,file2);
@@ -78,9 +78,9 @@ end
 HI=H(:, 1:3);
 H=inv(HI);
 fprintf(1,'Projecting 1 to 2...');
-[feat1 feat1t scales1]=project_regions(feat1',HI);
+[feat1, feat1t, ~]=project_regions(feat1',HI);
 fprintf(1,'and 2 to 1...\n');
-[feat2 feat2t scales2]=project_regions(feat2',H);
+[feat2, feat2t, ~]=project_regions(feat2',H);
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 if common_part==1
@@ -96,18 +96,18 @@ im2x=im2x(2);
 ind=find((feat1(:,1)+feat1(:,8))<im1x & (feat1(:,1)-feat1(:,8))>0 & (feat1(:,2)+feat1(:,9))<im1y & (feat1(:,2)-feat1(:,9))>0);
 feat1=feat1(ind,:);
 feat1t=feat1t(ind,:);
-ind=find((feat1t(:,1)+feat1t(:,8))<im2x & (feat1t(:,1)-feat1t(:,8))>0 & (feat1t(:,2)+feat1t(:,9))<im2y & (feat1t(:,2)-feat1t(:,9))>0);
+ind=(feat1t(:,1)+feat1t(:,8))<im2x & (feat1t(:,1)-feat1t(:,8))>0 & (feat1t(:,2)+feat1t(:,9))<im2y & (feat1t(:,2)-feat1t(:,9))>0;
 feat1=feat1(ind,:);
-feat1t=feat1t(ind,:);
-scales1=scales1(ind);
+% feat1t=feat1t(ind,:);
+% scales1=scales1(ind);
 
-ind=find((feat2(:,1)+feat2(:,8))<im2x & (feat2(:,1)-feat2(:,8))>0 & (feat2(:,2)+feat2(:,9))<im2y & (feat2(:,2)-feat2(:,9))>0);
+ind=(feat2(:,1)+feat2(:,8))<im2x & (feat2(:,1)-feat2(:,8))>0 & (feat2(:,2)+feat2(:,9))<im2y & (feat2(:,2)-feat2(:,9))>0;
 feat2t=feat2t(ind,:);
-feat2=feat2(ind,:);
-ind=find((feat2t(:,1)+feat2t(:,8))<im1x & (feat2t(:,1)-feat2t(:,8))>0 & (feat2t(:,2)+feat2t(:,9))<im1y & (feat2t(:,2)-feat2t(:,9))>0);
+% feat2=feat2(ind,:);
+ind=(feat2t(:,1)+feat2t(:,8))<im1x & (feat2t(:,1)-feat2t(:,8))>0 & (feat2t(:,2)+feat2t(:,9))<im1y & (feat2t(:,2)-feat2t(:,9))>0;
 feat2t=feat2t(ind,:);
-feat2=feat2(ind,:);
-scales2=scales2(ind);
+% feat2=feat2(ind,:);
+% scales2=scales2(ind);
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 fprintf(1,'nb of regions in common part in image1 %d.\n',size(feat1,1));
@@ -117,20 +117,20 @@ end
 sf=min([size(feat1,1) size(feat2t,1)]);
 
 feat1=feat1';
-feat1t=feat1t';
+% feat1t=feat1t';
 feat2t=feat2t';
-feat2=feat2';
+% feat2=feat2';
 
 fprintf(1,'Computing overlap error & selecting one-to-one correspondences: ');
 tic;
 %c_eoverlap is a C implementation to compute the overlap error.
-[wout, twout, dout, tdout]=c_eoverlap(feat1,feat2t,common_part);
+[wout, twout, dout, ~]=c_eoverlap(feat1,feat2t,common_part);
 t=toc;
 fprintf(1,' %.1f sec.\n',t);
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
-erro=[10:10:60];
+erro=10:10:60;
 corresp=zeros(1,6);
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -155,7 +155,7 @@ match_overlap=40;
 if common_part==0
 match_overlap=50;
 end
-fprintf(1,'Matching with the descriptor for the overlap error < %d\%\n',match_overlap);
+fprintf(1,'Matching with the descriptor for the overlap error < %d %%\n',match_overlap);
 if common_part==0
 twi=(twout<match_overlap);
 else
@@ -188,7 +188,7 @@ for c1=1:s1,%%%%%%%%%%%%%%%%%
 Mi1=[feat(c1,3) feat(c1,4);feat(c1,4) feat(c1,5)];
 
 %compute affine transformation
-[v1 e1]=eig(Mi1);
+[~, e1]=eig(Mi1);
 d1=(1/sqrt(e1(1))); 
 d2=(1/sqrt(e1(4))); 
 sc1=sqrt(d1*d2);
@@ -209,8 +209,10 @@ l1_2=H*l1';
 l1_2=l1_2/l1_2(3);
 featp(c1,1)=l1_2(1);
 featp(c1,2)=l1_2(2);
-BMB=inv(Aff*inv(Mi1)*Aff');
-[v1 e1]=eig(BMB);
+Mi1inv = [Mi1(2,2) -Mi1(1,2) ; -Mi1(2,1) Mi1(1,1)] / det(Mi1);
+BMB=inv(Aff*Mi1inv*Aff');
+% BMB=inv(Aff*inv(Mi1)*Aff');
+[~, e1]=eig(BMB);
 featp(c1,6)=(1/sqrt(e1(1)));
 featp(c1,7)=(1/sqrt(e1(4))); 
 featp(c1,3:5)=[BMB(1) BMB(2) BMB(4)];
@@ -223,7 +225,7 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-function Aff=getAff(x,y,sc,H)
+function Aff=getAff(x,y,~,H)
 h11=H(1);
 h12=H(4);
 h13=H(7);
@@ -243,7 +245,7 @@ fydy=h22/(h31*x + h32*y +h33) - (h21*x + h22*y +h23)*h32/(h31*x + h32*y +h33)^2;
 %end
 
 
-function [feat nb dim]=loadFeatures(file)
+function [feat, nb, dim]=loadFeatures(file)
 fid = fopen(file, 'r');
 dim=fscanf(fid, '%f',1);
 if dim==1

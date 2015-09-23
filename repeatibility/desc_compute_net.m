@@ -71,7 +71,7 @@ for idxc = idxx
     %% NN section
     if idx == '1'
         % Get network
-        load data/patch_net_fine.mat
+        load data/patch_rbm_fine.mat
         
         % Get encoder
         enc_fine = stack(get_layer(net_fine, 1), get_layer(net_fine,2), get_layer(net_fine, 3), get_layer(net_fine, 4));
