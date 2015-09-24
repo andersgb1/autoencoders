@@ -5,8 +5,17 @@ function [enc,dec] = train_rbm(X, num_hidden, varargin)
 %
 %   Name value pair options (default value):
 %
-%       'RowMajor' (true): logical specifying whether the observations in X
-%       are placed in rows or columns
+%       'HiddenFunction' ('logsig'): transfer function for the hidden
+%       units, can be 'logsig' or 'purelin'
+%
+%       'VisibleFunction' ('logsig'): transfer function for the visible
+%       units, can be 'logsig' or 'purelin'
+%
+%       'UnitFunction' ('default'): function determining the types of
+%       units, can be 'binary', 'gaussian' or 'default'. When using
+%       'default', the type of units depends on the transfer function. For
+%       'logsig', the default unit is 'binary' and for 'purelin' the
+%       default is 'gaussian'.
 %
 %       'MaxEpochs' (50): number of training iterations
 %
@@ -15,6 +24,9 @@ function [enc,dec] = train_rbm(X, num_hidden, varargin)
 %       'LearningRate' (0.1): learning rate
 %
 %       'Regularizer' (0.0002): regularizer for the weight update
+%
+%       'RowMajor' (true): logical specifying whether the observations in X
+%       are placed in rows or columns
 %
 %       'Verbose' (false): logical, set to true to print status messages
 %
@@ -25,24 +37,60 @@ function [enc,dec] = train_rbm(X, num_hidden, varargin)
 % Set opts
 p = inputParser;
 p.CaseSensitive = false;
-p.addOptional('RowMajor', true, @islogical)
-p.addOptional('MaxEpochs', 50, @isnumeric)
-p.addOptional('NumBatches', 100, @isnumeric)
-p.addOptional('LearningRate', 0.1, @isfloat)
-p.addOptional('Regularizer', 0.0002, @isfloat)
-p.addOptional('Verbose', false, @islogical)
-p.addOptional('Visualize', false, @islogical)
+p.addParameter('HiddenFunction', 'logsig', @ischar)
+p.addParameter('VisibleFunction', 'logsig', @ischar)
+p.addParameter('UnitFunction', 'default', @ischar)
+p.addParameter('MaxEpochs', 50, @isnumeric)
+p.addParameter('NumBatches', 100, @isnumeric)
+p.addParameter('LearningRate', 0.1, @isfloat)
+p.addParameter('Regularizer', 0.0002, @isfloat)
+p.addParameter('RowMajor', true, @islogical)
+p.addParameter('Verbose', false, @islogical)
+p.addParameter('Visualize', false, @islogical)
 p.parse(varargin{:});
 % Get opts
-row_major = p.Results.RowMajor;
+hidden_function = p.Results.HiddenFunction;
+visible_function = p.Results.VisibleFunction;
+unit_function = p.Results.UnitFunction;
 max_epochs = p.Results.MaxEpochs;
 num_batches = p.Results.NumBatches;
 regularizer = p.Results.Regularizer;
 learning_rate = p.Results.LearningRate;
+row_major = p.Results.RowMajor;
 verbose = p.Results.Verbose;
 visualize = p.Results.Visualize;
 % Transpose data to ensure row-major
 if ~row_major, X = X'; end
+% Get hidden transfer function handle
+if strcmpi(hidden_function, 'logsig')
+    hidden_function_handle = @logsig;
+elseif strcmpi(hidden_function, 'purelin')
+    hidden_function_handle = @purelin;
+else
+    error('Unknown hidden transfer function: %s!\n', hidden_function);
+end
+% Get visible transfer function handle
+if strcmpi(visible_function, 'logsig')
+    visible_function_handle = @logsig;
+elseif strcmpi(visible_function, 'purelin')
+    visible_function_handle = @purelin;
+else
+    error('Unknown visible transfer function: %s!\n', visible_function);
+end
+% Get unit function handle
+if strcmpi(unit_function, 'default')
+    unit_function = 'binary';
+    if strcmpi(hidden_function, 'purelin')
+        unit_function = 'gaussian';
+    end
+end
+if strcmpi(unit_function, 'binary')
+    unit_function_handle = @binary;
+elseif strcmpi(unit_function, 'gaussian')
+    unit_function_handle = @gaussian;
+else
+    error('Unknown unit function: %s!\n', unit_function);
+end
 
 %% Initialize weights and biases
 [N, num_visible] = size(X);
@@ -65,6 +113,13 @@ end
 Nbatch = 1;
 if num_batches > 1, Nbatch = floor(N / num_batches); end
 
+%% Verbosity
+fprintf('****************************************************************************\n');
+fprintf('Training a %i-%i RBM using %i training examples and a batch size of %i\n', num_visible, num_hidden, N, Nbatch);
+fprintf('Using hidden and visible unit transfer functions ''%s'' and ''%s''\n', hidden_function, visible_function);
+fprintf('Using unit function ''%s''\n', unit_function);
+fprintf('****************************************************************************\n');
+
 %% Train
 perf = zeros(1,max_epochs);
 for epoch = 1:max_epochs
@@ -75,7 +130,7 @@ for epoch = 1:max_epochs
     end
     
     % Loop over batches
-    error = 0;
+    err = 0;
     chars = 0;
     for batch_begin = 1:Nbatch:N
         %% Initialize batch data
@@ -98,18 +153,18 @@ for epoch = 1:max_epochs
         
         %% Positive phase
         % Forward pass through first layer
-        pos_hidden_activations = logistic(Xb * W + repmat(Bhid, batch_size, 1));
-        % Binarize
-        pos_hidden_states = pos_hidden_activations > rand(batch_size, num_hidden);
+        pos_hidden_activations = hidden_function_handle(Xb * W + repmat(Bhid, batch_size, 1));
+        % Apply unit function
+        pos_hidden_states = unit_function_handle(pos_hidden_activations, batch_size, num_hidden);
         % Get the positive gradient
         pos_gradient = Xb' * pos_hidden_activations;
         
         %% Negative phase
         % Reconstruction
-        neg_output_activations = logistic(pos_hidden_states * W' + repmat(Bvis, batch_size, 1));
+        neg_output_activations = visible_function_handle(pos_hidden_states * W' + repmat(Bvis, batch_size, 1));
         % Now use the reconstructed signal to resample the hidden
         % activations (Gibbs sampling)
-        neg_hidden_activations = logistic(neg_output_activations * W + repmat(Bhid, batch_size, 1));
+        neg_hidden_activations = hidden_function_handle(neg_output_activations * W + repmat(Bhid, batch_size, 1));
         % Get the negative gradient
         neg_gradient = neg_output_activations' * neg_hidden_activations;
 
@@ -127,15 +182,15 @@ for epoch = 1:max_epochs
         Bhid = Bhid + learning_rate * (pos_hiddden_activations - neg_hidden_activations) / batch_size;
 
         %% Compute error
-        error = error + sse(Xb - neg_output_activations);
+        err = err + sse(Xb - neg_output_activations);
     end
     
     % Store performance
-    perf(epoch) = error/numel(X);
+    perf(epoch) = err/numel(X);
     
     % Verbosity
     if verbose
-        fprintf('Error (SSE/MSE): %.0f/%.5f\n', error, perf(epoch));
+        fprintf('Error (SSE/MSE): %.0f/%.5f\n', err, perf(epoch));
         fprintf('Computation time [s]: %.5f\n', toc);
     end
     
@@ -161,7 +216,7 @@ for epoch = 1:max_epochs
         % Show first neuron, if possible
         if round(wh) == wh
             imshow(reshape(W(:,1), [wh wh]), 'parent', h4)
-            title(h4, 'First neuron')
+            title(h4, 'First unit')
         end
         
         % Update figures
@@ -176,7 +231,24 @@ dec = create_layer(num_hidden, num_visible, 'logsig', W, Bvis', 'trainscg', 'Nam
 
 end
 
-%% Logistic function
-function Y = logistic(X)
+%% Transfer functions
+% Linear
+function Y = purelin(X)
+Y = X;
+end
+
+% Logistic function
+function Y = logsig(X)
 Y = 1 ./ (1 + exp(-X));
+end
+
+%% Unit functions
+% Binary
+function states = binary(activations, N, num_hidden)
+states = activations > rand(N, num_hidden);
+end
+
+% Gaussian
+function states = gaussian(activations, N, num_hidden)
+states = activations + randn(N, num_hidden);
 end
