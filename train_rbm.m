@@ -5,8 +5,17 @@ function [enc,dec] = train_rbm(X, num_hidden, varargin)
 %
 %   Name value pair options (default value):
 %
-%       'RowMajor' (true): logical specifying whether the observations in X
-%       are placed in rows or columns
+%       'HiddenFunction' ('logsig'): transfer function for the hidden
+%       units, can be 'logsig' or 'purelin'
+%
+%       'VisibleFunction' ('logsig'): transfer function for the visible
+%       units, can be 'logsig' or 'purelin'
+%
+%       'UnitFunction' ('default'): function determining the types of
+%       units, can be 'binary', 'gaussian' or 'default'. When using
+%       'default', the type of units depends on the transfer function. For
+%       'logsig', the default unit is 'binary' and for 'purelin' the
+%       default is 'gaussian'.
 %
 %       'MaxEpochs' (50): number of training iterations
 %
@@ -16,45 +25,78 @@ function [enc,dec] = train_rbm(X, num_hidden, varargin)
 %
 %       'Regularizer' (0.0002): regularizer for the weight update
 %
+%       'RowMajor' (true): logical specifying whether the observations in X
+%       are placed in rows or columns
+%
 %       'Verbose' (false): logical, set to true to print status messages
 %
 %       'Visualize' (false): logical, set to true to show status plots
 %
 
 %% Parse inputs
+% Set opts
 p = inputParser;
 p.CaseSensitive = false;
-% Set opts
-p.addOptional('RowMajor', true, @islogical)
-p.addOptional('MaxEpochs', 50, @isnumeric)
-p.addOptional('NumBatches', 100, @isnumeric)
-p.addOptional('LearningRate', 0.1, @isfloat)
-p.addOptional('Regularizer', 0.0002, @isfloat)
-p.addOptional('Verbose', false, @islogical)
-p.addOptional('Visualize', false, @islogical)
+p.addParameter('HiddenFunction', 'logsig', @ischar)
+p.addParameter('VisibleFunction', 'logsig', @ischar)
+p.addParameter('UnitFunction', 'default', @ischar)
+p.addParameter('MaxEpochs', 50, @isnumeric)
+p.addParameter('NumBatches', 100, @isnumeric)
+p.addParameter('LearningRate', 0.1, @isfloat)
+p.addParameter('Regularizer', 0.0002, @isfloat)
+p.addParameter('RowMajor', true, @islogical)
+p.addParameter('Verbose', false, @islogical)
+p.addParameter('Visualize', false, @islogical)
 p.parse(varargin{:});
 % Get opts
-row_major = p.Results.RowMajor;
+hidden_function = p.Results.HiddenFunction;
+visible_function = p.Results.VisibleFunction;
+unit_function = p.Results.UnitFunction;
 max_epochs = p.Results.MaxEpochs;
 num_batches = p.Results.NumBatches;
 regularizer = p.Results.Regularizer;
 learning_rate = p.Results.LearningRate;
+row_major = p.Results.RowMajor;
 verbose = p.Results.Verbose;
 visualize = p.Results.Visualize;
-
 % Transpose data to ensure row-major
 if ~row_major, X = X'; end
+% Get hidden transfer function handle
+if strcmpi(hidden_function, 'logsig')
+    hidden_function_handle = @logsig;
+elseif strcmpi(hidden_function, 'purelin')
+    hidden_function_handle = @purelin;
+else
+    error('Unknown hidden transfer function: %s!\n', hidden_function);
+end
+% Get visible transfer function handle
+if strcmpi(visible_function, 'logsig')
+    visible_function_handle = @logsig;
+elseif strcmpi(visible_function, 'purelin')
+    visible_function_handle = @purelin;
+else
+    error('Unknown visible transfer function: %s!\n', visible_function);
+end
+% Get unit function handle
+if strcmpi(unit_function, 'default')
+    unit_function = 'binary';
+    if strcmpi(hidden_function, 'purelin')
+        unit_function = 'gaussian';
+    end
+end
+if strcmpi(unit_function, 'binary')
+    unit_function_handle = @binary;
+elseif strcmpi(unit_function, 'gaussian')
+    unit_function_handle = @gaussian;
+else
+    error('Unknown unit function: %s!\n', unit_function);
+end
 
 %% Initialize weights and biases
 [N, num_visible] = size(X);
 W = 0.1 * randn(num_visible, num_hidden);
 Bvis = zeros(1, num_visible);
 Bhid = zeros(1, num_hidden);
-% % Insert biases
-% W = [zeros(1,num_hidden) ; W];
-% W = [zeros(num_visible+1,1) W];
-% % Insert bias of 1 in front of each observation
-% X = [ones(N,1) X];
 
 %% Prepare other stuff
 if visualize
@@ -71,6 +113,13 @@ end
 Nbatch = 1;
 if num_batches > 1, Nbatch = floor(N / num_batches); end
 
+%% Verbosity
+fprintf('****************************************************************************\n');
+fprintf('Training a %i-%i RBM using %i training examples and a batch size of %i\n', num_visible, num_hidden, N, Nbatch);
+fprintf('Using hidden and visible unit transfer functions ''%s'' and ''%s''\n', hidden_function, visible_function);
+fprintf('Using unit function ''%s''\n', unit_function);
+fprintf('****************************************************************************\n');
+
 %% Train
 perf = zeros(1,max_epochs);
 for epoch = 1:max_epochs
@@ -81,9 +130,10 @@ for epoch = 1:max_epochs
     end
     
     % Loop over batches
-    error = 0;
+    err = 0;
     chars = 0;
     for batch_begin = 1:Nbatch:N
+        %% Initialize batch data
         batch_end = min([batch_begin + Nbatch - 1, N]);
         batch_size = batch_end - batch_begin + 1;
         
@@ -101,50 +151,46 @@ for epoch = 1:max_epochs
             Xb = X(batch_begin:batch_end,:);
         end
         
-        % Clamp to the data and sample from the hidden units. 
-        % (This is the "positive CD phase", aka the reality phase.)
-        pos_hidden_activations = Xb * W;
-    %     pos_hidden_probs = logistic(pos_hidden_activations);
-        pos_hidden_probs = logistic(pos_hidden_activations + repmat(Bhid, batch_size, 1));
-        pos_hidden_states = pos_hidden_probs > rand(batch_size, num_hidden);
-        % Note that we're using the activation *probabilities* of the hidden states, not the hidden states       
-        % themselves, when computing associations. We could also use the states; see section 3 of Hinton's 
-        % "A Practical Guide to Training Restricted Boltzmann Machines" for more.
-        pos_associations = Xb' * pos_hidden_probs;
+        %% Positive phase
+        % Forward pass through first layer
+        pos_hidden_activations = hidden_function_handle(Xb * W + repmat(Bhid, batch_size, 1));
+        % Apply unit function
+        pos_hidden_states = unit_function_handle(pos_hidden_activations, batch_size, num_hidden);
+        % Get the positive gradient
+        pos_gradient = Xb' * pos_hidden_activations;
+        
+        %% Negative phase
+        % Reconstruction
+        neg_output_activations = visible_function_handle(pos_hidden_states * W' + repmat(Bvis, batch_size, 1));
+        % Now use the reconstructed signal to resample the hidden
+        % activations (Gibbs sampling)
+        neg_hidden_activations = hidden_function_handle(neg_output_activations * W + repmat(Bhid, batch_size, 1));
+        % Get the negative gradient
+        neg_gradient = neg_output_activations' * neg_hidden_activations;
 
-        % Reconstruct the visible units and sample again from the hidden units.
-        % (This is the "negative CD phase", aka the daydreaming phase.)
-        neg_visible_activations = pos_hidden_states * W';
-        neg_visible_probs = logistic(neg_visible_activations + repmat(Bvis, batch_size, 1));
-    %     neg_visible_probs(:,1) = 1; % Fix the bias unit
-        neg_hidden_activations = neg_visible_probs * W;
-    %     neg_hidden_probs = logistic(neg_hidden_activations);
-        neg_hidden_probs = logistic(neg_hidden_activations + repmat(Bhid, batch_size, 1));
-        % Note, again, that we're using the activation *probabilities* when computing associations, not the states
-        % themselves.
-        neg_associations = neg_visible_probs' * neg_hidden_probs;
+        %% Update weights and biases
+        W = W + learning_rate * ( (pos_gradient - neg_gradient) / batch_size - regularizer * W );
+        
+        % Bias update for visible units
+        pos_visible_activations = sum(Xb);
+        neg_visible_activations = sum(neg_output_activations);
+        Bvis = Bvis + learning_rate * (pos_visible_activations - neg_visible_activations) / batch_size;
+        
+        % Bias update for hidden units
+        pos_hiddden_activations = sum(pos_hidden_activations);
+        neg_hidden_activations = sum(neg_hidden_activations);
+        Bhid = Bhid + learning_rate * (pos_hiddden_activations - neg_hidden_activations) / batch_size;
 
-        % Update weights
-        W = W + learning_rate * ( (pos_associations - neg_associations) / batch_size - regularizer * W );
-
-        pos_vis_act = sum(Xb);
-        neg_vis_act = sum(neg_visible_probs);
-        Bvis = Bvis + learning_rate * (pos_vis_act - neg_vis_act) / batch_size;
-
-        pos_hid_act = sum(pos_hidden_probs);
-        neg_hid_act = sum(neg_hidden_probs);
-        Bhid = Bhid + learning_rate * (pos_hid_act - neg_hid_act) / batch_size;
-
-        % Compute error
-        error = error + sse(Xb - neg_visible_probs);
+        %% Compute error
+        err = err + sse(Xb - neg_output_activations);
     end
     
     % Store performance
-    perf(epoch) = error/numel(X);
+    perf(epoch) = err/numel(X);
     
     % Verbosity
     if verbose
-        fprintf('Error (SSE/MSE): %.0f/%.5f\n', error, perf(epoch));
+        fprintf('Error (SSE/MSE): %.0f/%.5f\n', err, perf(epoch));
         fprintf('Computation time [s]: %.5f\n', toc);
     end
     
@@ -164,13 +210,13 @@ for epoch = 1:max_epochs
         title(h2, 'Image')
         
         % Show reconstruction
-        imshow(reshape(neg_visible_probs(1,:)', [wh wh]), 'parent', h3)
+        imshow(reshape(neg_output_activations(1,:)', [wh wh]), 'parent', h3)
         title(h3, 'Reconstruction')
         
         % Show first neuron, if possible
         if round(wh) == wh
             imshow(reshape(W(:,1), [wh wh]), 'parent', h4)
-            title(h4, 'First neuron')
+            title(h4, 'First unit')
         end
         
         % Update figures
@@ -185,7 +231,24 @@ dec = create_layer(num_hidden, num_visible, 'logsig', W, Bvis', 'trainscg', 'Nam
 
 end
 
-%% Logistic function
-function Y = logistic(X)
+%% Transfer functions
+% Linear
+function Y = purelin(X)
+Y = X;
+end
+
+% Logistic function
+function Y = logsig(X)
 Y = 1 ./ (1 + exp(-X));
+end
+
+%% Unit functions
+% Binary
+function states = binary(activations, N, num_hidden)
+states = activations > rand(N, num_hidden);
+end
+
+% Gaussian
+function states = gaussian(activations, N, num_hidden)
+states = activations + randn(N, num_hidden);
 end
