@@ -22,9 +22,9 @@ function [enc,dec] = train_rbm(X, num_hidden, varargin)
 %
 
 %% Parse inputs
+% Set opts
 p = inputParser;
 p.CaseSensitive = false;
-% Set opts
 p.addOptional('RowMajor', true, @islogical)
 p.addOptional('MaxEpochs', 50, @isnumeric)
 p.addOptional('NumBatches', 100, @isnumeric)
@@ -41,7 +41,6 @@ regularizer = p.Results.Regularizer;
 learning_rate = p.Results.LearningRate;
 verbose = p.Results.Verbose;
 visualize = p.Results.Visualize;
-
 % Transpose data to ensure row-major
 if ~row_major, X = X'; end
 
@@ -50,11 +49,6 @@ if ~row_major, X = X'; end
 W = 0.1 * randn(num_visible, num_hidden);
 Bvis = zeros(1, num_visible);
 Bhid = zeros(1, num_hidden);
-% % Insert biases
-% W = [zeros(1,num_hidden) ; W];
-% W = [zeros(num_visible+1,1) W];
-% % Insert bias of 1 in front of each observation
-% X = [ones(N,1) X];
 
 %% Prepare other stuff
 if visualize
@@ -84,6 +78,7 @@ for epoch = 1:max_epochs
     error = 0;
     chars = 0;
     for batch_begin = 1:Nbatch:N
+        %% Initialize batch data
         batch_end = min([batch_begin + Nbatch - 1, N]);
         batch_size = batch_end - batch_begin + 1;
         
@@ -101,42 +96,38 @@ for epoch = 1:max_epochs
             Xb = X(batch_begin:batch_end,:);
         end
         
-        % Clamp to the data and sample from the hidden units. 
-        % (This is the "positive CD phase", aka the reality phase.)
-        pos_hidden_activations = Xb * W;
-    %     pos_hidden_probs = logistic(pos_hidden_activations);
-        pos_hidden_probs = logistic(pos_hidden_activations + repmat(Bhid, batch_size, 1));
-        pos_hidden_states = pos_hidden_probs > rand(batch_size, num_hidden);
-        % Note that we're using the activation *probabilities* of the hidden states, not the hidden states       
-        % themselves, when computing associations. We could also use the states; see section 3 of Hinton's 
-        % "A Practical Guide to Training Restricted Boltzmann Machines" for more.
-        pos_associations = Xb' * pos_hidden_probs;
+        %% Positive phase
+        % Forward pass through first layer
+        pos_hidden_activations = logistic(Xb * W + repmat(Bhid, batch_size, 1));
+        % Binarize
+        pos_hidden_states = pos_hidden_activations > rand(batch_size, num_hidden);
+        % Get the positive gradient
+        pos_gradient = Xb' * pos_hidden_activations;
+        
+        %% Negative phase
+        % Reconstruction
+        neg_output_activations = logistic(pos_hidden_states * W' + repmat(Bvis, batch_size, 1));
+        % Now use the reconstructed signal to resample the hidden
+        % activations (Gibbs sampling)
+        neg_hidden_activations = logistic(neg_output_activations * W + repmat(Bhid, batch_size, 1));
+        % Get the negative gradient
+        neg_gradient = neg_output_activations' * neg_hidden_activations;
 
-        % Reconstruct the visible units and sample again from the hidden units.
-        % (This is the "negative CD phase", aka the daydreaming phase.)
-        neg_visible_activations = pos_hidden_states * W';
-        neg_visible_probs = logistic(neg_visible_activations + repmat(Bvis, batch_size, 1));
-    %     neg_visible_probs(:,1) = 1; % Fix the bias unit
-        neg_hidden_activations = neg_visible_probs * W;
-    %     neg_hidden_probs = logistic(neg_hidden_activations);
-        neg_hidden_probs = logistic(neg_hidden_activations + repmat(Bhid, batch_size, 1));
-        % Note, again, that we're using the activation *probabilities* when computing associations, not the states
-        % themselves.
-        neg_associations = neg_visible_probs' * neg_hidden_probs;
+        %% Update weights and biases
+        W = W + learning_rate * ( (pos_gradient - neg_gradient) / batch_size - regularizer * W );
+        
+        % Bias update for visible units
+        pos_visible_activations = sum(Xb);
+        neg_visible_activations = sum(neg_output_activations);
+        Bvis = Bvis + learning_rate * (pos_visible_activations - neg_visible_activations) / batch_size;
+        
+        % Bias update for hidden units
+        pos_hiddden_activations = sum(pos_hidden_activations);
+        neg_hidden_activations = sum(neg_hidden_activations);
+        Bhid = Bhid + learning_rate * (pos_hiddden_activations - neg_hidden_activations) / batch_size;
 
-        % Update weights
-        W = W + learning_rate * ( (pos_associations - neg_associations) / batch_size - regularizer * W );
-
-        pos_vis_act = sum(Xb);
-        neg_vis_act = sum(neg_visible_probs);
-        Bvis = Bvis + learning_rate * (pos_vis_act - neg_vis_act) / batch_size;
-
-        pos_hid_act = sum(pos_hidden_probs);
-        neg_hid_act = sum(neg_hidden_probs);
-        Bhid = Bhid + learning_rate * (pos_hid_act - neg_hid_act) / batch_size;
-
-        % Compute error
-        error = error + sse(Xb - neg_visible_probs);
+        %% Compute error
+        error = error + sse(Xb - neg_output_activations);
     end
     
     % Store performance
@@ -164,7 +155,7 @@ for epoch = 1:max_epochs
         title(h2, 'Image')
         
         % Show reconstruction
-        imshow(reshape(neg_visible_probs(1,:)', [wh wh]), 'parent', h3)
+        imshow(reshape(neg_output_activations(1,:)', [wh wh]), 'parent', h3)
         title(h3, 'Reconstruction')
         
         % Show first neuron, if possible
