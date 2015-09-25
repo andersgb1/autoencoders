@@ -111,6 +111,9 @@ decoder = stack(get_layer(rbm4,2), get_layer(rbm3,2), get_layer(rbm2,2), get_lay
 net = stack(encoder, decoder);
 net.trainParam.epochs = Niter_fine;
 net.trainParam.showWindow = true;
+net.divideFcn = 'dividetrain';
+net.plotFcns = {'plotperform'};
+net.plotParams = {nnetParam}; % Dummy?
 
 % Get features
 enc_train_feat = encoder(train_images);
