@@ -5,6 +5,10 @@ function [enc,dec] = train_rbm(X, num_hidden, varargin)
 %   pair where enc is the encoder part and dec is the decoder. These can be
 %   stacked in an RBM using the MATLAB function STACK.
 %
+%   The data in X is expected to be row-major, meaning that all the feature
+%   vectors are stacked as rows on top of each other. If your data is in
+%   column-major, use the 'RowMajor' option described below.
+%
 %   Name value pair options (default value):
 %
 %       'HiddenFunction' ('logsig'): transfer function for the hidden
@@ -36,6 +40,12 @@ function [enc,dec] = train_rbm(X, num_hidden, varargin)
 %
 %       'Visualize' (false): logical, set to true to show status plots
 %
+%       'Callback' (0): here you can specify a handle to a function, which
+%       will be called after every epoch. This is useful if you want to
+%       show some kind of progress of where we are. The function handle
+%       must take one argument, and then it will be called with the current
+%       epoch index.
+%
 
 %% Parse inputs
 % Set opts
@@ -52,6 +62,7 @@ p.addParameter('Regularizer', 0.0002, @isfloat)
 p.addParameter('RowMajor', true, @islogical)
 p.addParameter('Verbose', false, @islogical)
 p.addParameter('Visualize', false, @islogical)
+p.addParameter('Callback', 0);
 p.parse(varargin{:});
 % Get opts
 hidden_function = p.Results.HiddenFunction;
@@ -65,6 +76,7 @@ momentum = p.Results.Momentum;
 row_major = p.Results.RowMajor;
 verbose = p.Results.Verbose;
 visualize = p.Results.Visualize;
+callback = p.Results.Callback;
 % Transpose data to ensure row-major
 if ~row_major, X = X'; end
 % Get unit function
@@ -176,7 +188,7 @@ for epoch = 1:max_epochs
 
         %% Compute error
         err = err + sse(Xb - neg_output_activations);
-    end
+    end % End loop over batches
     
     % Store performance
     perf(epoch) = err/numel(X);
@@ -215,8 +227,11 @@ for epoch = 1:max_epochs
         % Update figures
         colormap gray
         drawnow
-    end
-end
+    end % End visualization
+    
+    % Finally invoke the callback
+    if isa(callback, 'function_handle'), feval(callback, epoch); end
+end % End loop over epochs
 
 %% Create output
 enc = create_layer(num_visible, num_hidden, hidden_function, W', Bhid', 'trainscg', 'Name', 'Encoder');
