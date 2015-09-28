@@ -1,9 +1,11 @@
+close all;
+
 %% Setup parameters for script
 
 path('repeatibility', path);
 
 % Set to true to disable loading existing autoencoders
-force_training = false;
+force_training = true;
 
 % Set to a positive value to reduce training set
 Nreduce = 0;
@@ -14,10 +16,7 @@ Niter_init = 50;
 Niter_fine = 200;
 
 % Layer sizes
-l1size = 2000;
-l2size = 1000;
-l3size = 250;
-l4size = 30;
+num_hidden = [2000 1000 250 30];
 
 %% Load data
 % Image root path
@@ -53,94 +52,35 @@ Ntrain = size(train_images,2);
 % Ensure deterministic results
 rng('default')
 
-%% Load (or train) the autoencoders
-if ~force_training &&...
-        exist('data/patch_rbm1.mat', 'file') &&...
-        exist('data/patch_rbm2.mat', 'file') &&...
-        exist('data/patch_rbm3.mat', 'file') &&...
-        exist('data/patch_rbm4.mat', 'file')
-    disp 'Loading pretrained autoencoders from files...'
-    load data/patch_rbm1.mat
-    load data/patch_rbm2.mat
-    load data/patch_rbm3.mat
-    load data/patch_rbm4.mat
-else
-    [enc1,dec1] = train_rbm(train_images, l1size,...
-        'MaxEpochs', Niter_init,...
-        'NumBatches', Ntrain/10,...
-        'RowMajor', false,...
-        'Verbose', true,...
-        'Visualize', true);
-    rbm1 = stack(enc1,dec1);
-    save('data/patch_rbm1.mat', 'rbm1');
-    
-    feat1 = enc1(train_images);
-    [enc2,dec2] = train_rbm(feat1, l2size,...
-        'MaxEpochs', Niter_init,...
-        'NumBatches', Ntrain/10,...
-        'RowMajor', false,...
-        'Verbose', true,...
-        'Visualize', false);
-    rbm2 = stack(enc2,dec2);
-    save('data/patch_rbm2.mat', 'rbm2');
-    
-    feat2 = enc2(feat1);
-    [enc3,dec3] = train_rbm(feat2, l3size,...
-        'MaxEpochs', Niter_init,...
-        'NumBatches', Ntrain/10,...
-        'RowMajor', false,...
-        'Verbose', true,...
-        'Visualize', false);
-    rbm3 = stack(enc3,dec3);
-    save('data/patch_rbm3.mat', 'rbm3');
-    
-    feat3 = enc3(feat2);
-    [enc4,dec4] = train_rbm(feat3, l4size,...
-        'MaxEpochs', Niter_init,...
-        'NumBatches', Ntrain/10,...
-        'RowMajor', false,...
-        'Verbose', true,...
-        'Visualize', false);
-    rbm4 = stack(enc4,dec4);
-    save('data/patch_rbm4.mat', 'rbm4');
-end
-
-%% Stack the RBMs
-encoder = stack(get_layer(rbm1,1), get_layer(rbm2,1), get_layer(rbm3,1), get_layer(rbm4,1));
-decoder = stack(get_layer(rbm4,2), get_layer(rbm3,2), get_layer(rbm2,2), get_layer(rbm1,2));
-net = stack(encoder, decoder);
-net.trainParam.epochs = Niter_fine;
-net.trainParam.showWindow = true;
-net.divideFcn = 'dividetrain';
-net.plotFcns = {'plotperform'};
-net.plotParams = {nnetParam}; % Dummy?
-
-% Get features
-enc_train_feat = encoder(train_images);
-
 %% Fine tune (or load fine tuned) network
 if ~force_training && exist('data/patch_rbm_fine.mat', 'file')
     disp 'Loading pretrained fine tuned network file...'
     load data/patch_rbm_fine.mat;
 else
-    net_fine = train(net, train_images, train_images);
-    save('data/patch_rbm_fine.mat', 'net_fine');
+    [net,enc,dec,enc_init,dec_init] = train_dbn(train_images', num_hidden,...
+        'OutputFunction', 'purelin',...
+        'MaxEpochsInit', Niter_init,...
+        'MaxEpochs', Niter_fine,...
+        'NumBatches', Ntrain/10,...
+        'Verbose', true,...
+        'Visualize', true);
+    save('data/patch_rbm_fine.mat', 'net', 'enc', 'dec', 'enc_init', 'dec_init');
 end
 
-% Get encoder for fine tuned network
-enc_fine = stack(get_layer(net_fine, 1), get_layer(net_fine,2), get_layer(net_fine, 3), get_layer(net_fine, 4));
+% Network before fine tuning
+net_init = stack(enc_init, dec_init);
 
 %% Get a PCA for the training images
 disp 'Getting a PCA...'
-[c,~,~,~,~,mu] = pca(train_images', 'NumComponents', l4size);
+[c,~,~,~,~,mu] = pca(train_images', 'NumComponents', num_hidden(end));
 pca_train_feat = (train_images'-repmat(mu,Ntrain,1)) * c;
 
 %% Present reconstruction errors
 disp 'Presenting results...'
 % Reconstructions of training data before/after fine tuning and using PCA
-net_train_rec = net(train_images);
-net_fine_train_rec = net_fine(train_images);
 pca_train_rec = pca_train_feat * c' + repmat(mu,Ntrain,1);
+net_train_rec = net_init(train_images);
+net_fine_train_rec = net(train_images);
 fprintf('PCA(%d) reconstruction error: %.4f\n', l4size, mse(pca_train_rec' - train_images));
 fprintf('NN reconstruction error: %.4f\n', mse(net_train_rec - train_images));
 fprintf('Fine-tuned NN reconstruction error: %.4f\n', mse(net_fine_train_rec - train_images));
@@ -156,6 +96,6 @@ colormap gray
 %% Show some 1-layer unit weights
 figure('Name', '1-layer encoder weights')
 for i=1:100
-    subplot(10,10,i),imagesc(reshape(net_fine.IW{1}(1,:)',wh,wh))
+    subplot(10,10,i),imagesc(reshape(net.IW{1}(1,:)',wh,wh))
 end
 colormap gray
