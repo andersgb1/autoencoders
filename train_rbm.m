@@ -219,7 +219,7 @@ for epoch = 1:max_epochs
         
         % Show first neuron, if possible
         if round(wh) == wh
-            imshow(reshape(W(:,1), [wh wh]), 'parent', h4)
+            imagesc(reshape(W(:,1), [wh wh]), 'parent', h4)
             title(h4, 'First unit')
         end
         
