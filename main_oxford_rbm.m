@@ -81,7 +81,7 @@ disp 'Presenting results...'
 pca_train_rec = pca_train_feat * c' + repmat(mu,Ntrain,1);
 net_train_rec = net_init(train_images);
 net_fine_train_rec = net(train_images);
-fprintf('PCA(%d) reconstruction error: %.4f\n', l4size, mse(pca_train_rec' - train_images));
+fprintf('PCA(%d) reconstruction error: %.4f\n', num_hidden(end), mse(pca_train_rec' - train_images));
 fprintf('NN reconstruction error: %.4f\n', mse(net_train_rec - train_images));
 fprintf('Fine-tuned NN reconstruction error: %.4f\n', mse(net_fine_train_rec - train_images));
 idx = randi(Ntrain);

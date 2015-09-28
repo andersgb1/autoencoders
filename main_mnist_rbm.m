@@ -6,7 +6,7 @@ close all;
 force_training = true;
 
 % Set to a positive value to reduce training set
-Nreduce = 0;
+Nreduce = 1e4;
 
 % Number of training iterations for the individual layers and for the final
 % fine tuning
@@ -64,7 +64,7 @@ disp 'Presenting results...'
 pca_train_rec = pca_train_feat * c' + repmat(mu,Ntrain,1);
 net_train_rec = net_init(train_images);
 net_fine_train_rec = net(train_images);
-fprintf('PCA(%d) reconstruction error: %.4f\n', l4size, mse(pca_train_rec' - train_images));
+fprintf('PCA(%d) reconstruction error: %.4f\n', num_hidden(end), mse(pca_train_rec' - train_images));
 fprintf('NN reconstruction error: %.4f\n', mse(net_train_rec - train_images));
 fprintf('Fine-tuned NN reconstruction error: %.4f\n', mse(net_fine_train_rec - train_images));
 idx = randi(Ntrain);
@@ -81,7 +81,7 @@ colormap gray
 pca_test_feat = (test_images'-repmat(mu,Ntest,1)) * c;
 model_knn_pca = fitcknn(pca_train_feat, train_labels, 'NumNeighbors', 5);
 output_labels_pca = model_knn_pca.predict(pca_test_feat);
-fprintf('PCA(%d) classification error rate: %.2f %%\n', l4size, 100 * sum(output_labels_pca ~= test_labels) / Ntest);
+fprintf('PCA(%d) classification error rate: %.2f %%\n', num_hidden(end), 100 * sum(output_labels_pca ~= test_labels) / Ntest);
 
 % Network
 model_enc = fitcknn(enc_init(train_images)', train_labels, 'NumNeighbors', 5);
