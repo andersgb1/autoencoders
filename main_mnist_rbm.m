@@ -36,9 +36,9 @@ Ntest = length(test_labels);
 rng('default')
 
 %% Fine tune (or load fine tuned) network
-if ~force_training && exist('data/mnist_rbm_fine.mat', 'file')
+if ~force_training && exist('data/mnist.mat', 'file')
     disp 'Loading pretrained fine tuned network file...'
-    load data/mnist_rbm_fine.mat;
+    load data/mnist.mat;
 else
     [net,enc,dec,enc_init,dec_init] = train_dbn(train_images', num_hidden,...
         'OutputFunction', 'purelin',...
@@ -47,7 +47,7 @@ else
         'NumBatches', Ntrain/100,...
         'Verbose', true,...
         'Visualize', true);
-    save('data/mnist_rbm_fine.mat', 'net', 'enc', 'dec', 'enc_init', 'dec_init');
+    save('data/mnist.mat', 'net', 'enc', 'dec', 'enc_init', 'dec_init');
 end
 
 % Network before fine tuning

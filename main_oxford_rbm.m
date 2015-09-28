@@ -53,9 +53,9 @@ Ntrain = size(train_images,2);
 rng('default')
 
 %% Fine tune (or load fine tuned) network
-if ~force_training && exist('data/patch_rbm_fine.mat', 'file')
+if ~force_training && exist('data/oxford.mat', 'file')
     disp 'Loading pretrained fine tuned network file...'
-    load data/patch_rbm_fine.mat;
+    load data/oxford.mat;
 else
     [net,enc,dec,enc_init,dec_init] = train_dbn(train_images', num_hidden,...
         'OutputFunction', 'purelin',...
@@ -64,7 +64,7 @@ else
         'NumBatches', Ntrain/10,...
         'Verbose', true,...
         'Visualize', true);
-    save('data/patch_rbm_fine.mat', 'net', 'enc', 'dec', 'enc_init', 'dec_init');
+    save('data/oxford.mat', 'net', 'enc', 'dec', 'enc_init', 'dec_init');
 end
 
 % Network before fine tuning
