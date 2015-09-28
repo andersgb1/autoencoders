@@ -17,7 +17,7 @@ function [enc,dec] = train_rbm(X, num_hidden, varargin)
 %       'VisibleFunction' ('logsig'): transfer function for the visible
 %       units, can be 'logsig', 'tansig' or 'purelin'
 %
-%       'UnitFunction' ('default'): function determining the types of
+%       'UnitFunction' ('default'): function determining the type of hidden
 %       units, can be 'binary', 'gaussian' or 'default'. When using
 %       'default', the type of units depends on the transfer function. For
 %       'purelin' the default is 'gaussian', otherwise it is set to
@@ -164,8 +164,7 @@ for epoch = 1:max_epochs
         %% Negative phase
         % Reconstruction
         neg_output_activations = feval(visible_function, pos_hidden_states * W' + repmat(Bvis, batch_size, 1));
-        % Now use the reconstructed signal to resample the hidden
-        % activations (Gibbs sampling)
+        % Now use the reconstructed signal to resample hidden activations
         neg_hidden_activations = feval(hidden_function, neg_output_activations * W + repmat(Bhid, batch_size, 1));
         % Get the negative gradient
         neg_gradient = neg_output_activations' * neg_hidden_activations;
