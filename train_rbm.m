@@ -93,6 +93,7 @@ assert(exist(unit_function) > 0, 'Unknown unit function: %s!\n', unit_function);
 
 %% Initialize weights and biases and their increments
 [N, num_visible] = size(X);
+wh = sqrt(num_visible);
 W = 0.1 * randn(num_visible, num_hidden);
 Bvis = zeros(1, num_visible);
 Bhid = zeros(1, num_hidden);
@@ -105,10 +106,15 @@ if visualize
     figname = 'RBM';
     if ~isempty(findobj('type', 'figure', 'name', figname)), close(figname); end
     figure('Name', figname)
-    h1 = subplot(221);
-    h2 = subplot(222);
-    h3 = subplot(223);
-    h4 = subplot(224);
+    % If image data
+    if wh == round(wh)
+        h1 = subplot(221);
+        h2 = subplot(222);
+        h3 = subplot(223);
+        h4 = subplot(224);
+    else
+        h1 = gca;
+    end
 end
 
 %% Setup mini-batches
@@ -201,25 +207,25 @@ for epoch = 1:max_epochs
     % Visualization
     if visualize
         % Plot performance
-        plot(h1, 1:epoch, perf(1:epoch), '-*w', 'LineWidth', 1.5)
+        plot(h1, 1:epoch, perf(1:epoch), '-*k', 'LineWidth', 1.5)
         xlim(h1, [0.9 epoch+1.1])
-        ylim(h1, [0 perf(1)])
+        ylim(h1, [0 1.1*perf(1)])
         xlabel(h1, 'Epoch')
         ylabel(h1, 'Performance (MSE)')
-        set(h1, 'color', [0 0 0])
         
-        % Show first image
-        wh = sqrt(num_visible);
-        imshow(reshape(Xb(1,:)', [wh wh]), 'parent', h2)
-        title(h2, 'Image')
-        
-        % Show reconstruction
-        imshow(reshape(neg_output_activations(1,:)', [wh wh]), 'parent', h3)
-        title(h3, 'Reconstruction')
-        
-        % Show first neuron, if possible
+        % If image data
         if round(wh) == wh
+            % Show first image
+            imshow(reshape(Xb(1,:)', [wh wh]), 'parent', h2)
+            title(h2, 'Image')
+            
+            % Show reconstruction
+            imshow(reshape(neg_output_activations(1,:)', [wh wh]), 'parent', h3)
+            title(h3, 'Reconstruction')
+
+            % Show first neuron
             imagesc(reshape(W(:,1), [wh wh]), 'parent', h4)
+            colorbar
             title(h4, 'First unit')
         end
         

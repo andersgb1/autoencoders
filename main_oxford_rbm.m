@@ -5,7 +5,7 @@ close all;
 path('repeatibility', path);
 
 % Set to true to disable loading existing autoencoders
-force_training = true;
+force_training = false;
 
 % Set to a positive value to reduce training set
 Nreduce = 0;
