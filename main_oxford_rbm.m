@@ -99,6 +99,6 @@ colormap gray
 %% Show some 1-layer unit weights
 figure('Name', '1-layer encoder weights')
 for i=1:100
-    subplot(10,10,i),imagesc(reshape(net.IW{1}(1,:)',wh,wh))
+    subplot(10,10,i),imagesc(reshape(net.IW{1}(i,:)',wh,wh))
 end
 colormap gray
