@@ -101,8 +101,16 @@ output_labels_encfine = model_encfine.predict(enc(test_images)');
 fprintf('Fine-tuned NN error rate: %.2f %%\n', 100 * sum(output_labels_encfine ~= test_labels) / Ntest);
 
 %% Show some 1-layer unit weights
-figure('Name', '1-layer encoder weights')
+figure('Name', '1-layer encoder weights before fine tuning')
+for i=1:100
+    subplot(10,10,i),imagesc(reshape(enc_init.IW{1}(i,:)',wh,wh))
+    axis off equal
+end
+colormap gray
+
+figure('Name', '1-layer encoder weights after fine tuning')
 for i=1:100
     subplot(10,10,i),imagesc(reshape(net.IW{1}(i,:)',wh,wh))
+    axis off equal
 end
 colormap gray

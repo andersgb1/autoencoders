@@ -23,7 +23,7 @@ num_hidden = [2000 1000 500 250 64];
 root='repeatibility/graf';
 
 % Image(s) to consider
-idxx = {'1'};%, '2', '3', '4', '5', '6'};
+idxx = {'1', '2', '3', '4', '5', '6'};
 
 % Detector
 % Oxford detectors: har, harlap, heslap, haraff, hesaff
@@ -97,8 +97,16 @@ subplot(224),imagesc(reshape(net_fine_train_rec(:,idx), [wh wh])),title('Fine-tu
 colormap gray
 
 %% Show some 1-layer unit weights
-figure('Name', '1-layer encoder weights')
+figure('Name', '1-layer encoder weights before fine tuning')
+for i=1:100
+    subplot(10,10,i),imagesc(reshape(enc_init.IW{1}(i,:)',wh,wh))
+    axis off equal
+end
+colormap gray
+
+figure('Name', '1-layer encoder weights after fine tuning')
 for i=1:100
     subplot(10,10,i),imagesc(reshape(net.IW{1}(i,:)',wh,wh))
+    axis off equal
 end
 colormap gray
