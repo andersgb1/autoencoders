@@ -59,7 +59,7 @@ disp 'Getting a PCA...'
 pca_train_feat = (train_images'-repmat(mu,Ntrain,1)) * c;
 
 %% Present reconstruction errors
-disp 'Presenting results...'
+disp 'Presenting reconstruction results...'
 % Reconstructions of training data before/after fine tuning and using PCA
 pca_train_rec = pca_train_feat * c' + repmat(mu,Ntrain,1);
 net_train_rec = net_init(train_images);
@@ -77,19 +77,26 @@ subplot(224),imagesc(reshape(net_fine_train_rec(:,idx), [wh wh])),title('Fine-tu
 colormap gray
 
 %% Present classification results
+disp 'Presenting classification results...'
 % PCA
+disp '    Training k-NN classifier using PCA...'
 pca_test_feat = (test_images'-repmat(mu,Ntest,1)) * c;
+disp '    Testing...'
 model_knn_pca = fitcknn(pca_train_feat, train_labels, 'NumNeighbors', 5);
 output_labels_pca = model_knn_pca.predict(pca_test_feat);
 fprintf('PCA(%d) classification error rate: %.2f %%\n', num_hidden(end), 100 * sum(output_labels_pca ~= test_labels) / Ntest);
 
 % Network
+disp '    Training k-NN classifier using initial network...'
 model_enc = fitcknn(enc_init(train_images)', train_labels, 'NumNeighbors', 5);
+disp '    Testing...'
 output_labels_enc = model_enc.predict(enc_init(test_images)');
 fprintf('NN error rate: %.2f %%\n', 100 * sum(output_labels_enc ~= test_labels) / Ntest);
 
 % Fine tuned network
+disp '    Training k-NN classifier using fine tuned network...'
 model_encfine = fitcknn(enc(train_images)', train_labels, 'NumNeighbors', 5);
+disp '    Testing...'
 output_labels_encfine = model_encfine.predict(enc(test_images)');
 fprintf('Fine-tuned NN error rate: %.2f %%\n', 100 * sum(output_labels_encfine ~= test_labels) / Ntest);
 

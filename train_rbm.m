@@ -33,6 +33,9 @@ function [enc,dec] = train_rbm(X, num_hidden, varargin)
 %
 %       'Regularizer' (0.0002): regularizer for the weight update
 %
+%       'Sigma' (0.1): standard deviation for the random Gaussian
+%       distribution used for initializing the weights
+%
 %       'RowMajor' (true): logical specifying whether the observations in X
 %       are placed in rows or columns
 %
@@ -59,6 +62,7 @@ p.addParameter('NumBatches', 100, @isnumeric)
 p.addParameter('LearningRate', 0.1, @isfloat)
 p.addParameter('Momentum', 0.9, @isfloat)
 p.addParameter('Regularizer', 0.0002, @isfloat)
+p.addParameter('Sigma', 0.1, @isfloat)
 p.addParameter('RowMajor', true, @islogical)
 p.addParameter('Verbose', false, @islogical)
 p.addParameter('Visualize', false, @islogical)
@@ -71,6 +75,7 @@ unit_function = p.Results.UnitFunction;
 max_epochs = p.Results.MaxEpochs;
 num_batches = p.Results.NumBatches;
 regularizer = p.Results.Regularizer;
+sigma = p.Results.Sigma;
 learning_rate = p.Results.LearningRate;
 momentum = p.Results.Momentum;
 row_major = p.Results.RowMajor;
@@ -94,7 +99,7 @@ assert(exist(unit_function) > 0, 'Unknown unit function: %s!\n', unit_function);
 %% Initialize weights and biases and their increments
 [N, num_visible] = size(X);
 wh = sqrt(num_visible);
-W = 0.1 * randn(num_visible, num_hidden);
+W = sigma * randn(num_visible, num_hidden);
 Bvis = zeros(1, num_visible);
 Bhid = zeros(1, num_hidden);
 Winc = zeros(size(W));
@@ -118,15 +123,17 @@ if visualize
 end
 
 %% Setup mini-batches
-Nbatch = 1;
+Nbatch = N;
 if num_batches > 1, Nbatch = floor(N / num_batches); end
 
 %% Verbosity
-fprintf('****************************************************************************\n');
-fprintf('Training a %i-%i RBM using %i training examples and a batch size of %i\n', num_visible, num_hidden, N, Nbatch);
-fprintf('Using hidden and visible unit transfer functions ''%s'' and ''%s''\n', hidden_function, visible_function);
-fprintf('Using unit function ''%s''\n', unit_function);
-fprintf('****************************************************************************\n');
+if verbose
+    fprintf('****************************************************************************\n');
+    fprintf('Training a %i-%i RBM using %i training examples and a batch size of %i\n', num_visible, num_hidden, N, Nbatch);
+    fprintf('Using hidden and visible unit transfer functions ''%s'' and ''%s''\n', hidden_function, visible_function);
+    fprintf('Using unit function ''%s''\n', unit_function);
+    fprintf('****************************************************************************\n');
+end
 
 %% Train
 perf = zeros(1,max_epochs);
@@ -209,7 +216,7 @@ for epoch = 1:max_epochs
         % Plot performance
         plot(h1, 1:epoch, perf(1:epoch), '-*k', 'LineWidth', 1.5)
         xlim(h1, [0.9 epoch+1.1])
-        ylim(h1, [0 1.1*perf(1)])
+        ylim(h1, [0 1.1*max(perf)])
         xlabel(h1, 'Epoch')
         ylabel(h1, 'Performance (MSE)')
         

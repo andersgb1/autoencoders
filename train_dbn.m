@@ -56,6 +56,12 @@ function [net,varargout] = train_dbn(X, num_hidden, varargin)
 %
 %       'Regularizer' (0.0002): regularizer for the weight update
 %
+%       'Sigma' (0.1): standard deviation for the random Gaussian
+%       distribution used for initializing the weights
+%
+%       'TrainFcn' ('trainscg'): training function to use during
+%       backpropagation
+%
 %       'RowMajor' (true): logical specifying whether the observations in X
 %       are placed in rows or columns
 %
@@ -86,6 +92,8 @@ p.addParameter('LearningRate', 0.1, @isfloat)
 p.addParameter('LearningRateFinal', 0.001, @isfloat)
 p.addParameter('Momentum', 0.9, @isfloat)
 p.addParameter('Regularizer', 0.0002, @isfloat)
+p.addParameter('Sigma', 0.1, @isfloat)
+p.addParameter('TrainFcn', 'trainscg', @ischar)
 p.addParameter('RowMajor', true, @islogical)
 p.addParameter('Verbose', false, @islogical)
 p.addParameter('Visualize', false, @islogical)
@@ -99,6 +107,8 @@ max_epochs_init = p.Results.MaxEpochsInit;
 max_epochs = p.Results.MaxEpochs;
 num_batches = p.Results.NumBatches;
 regularizer = p.Results.Regularizer;
+sigma = p.Results.Sigma;
+train_fcn = p.Results.TrainFcn;
 learning_rate = p.Results.LearningRate;
 learning_rate_final = p.Results.LearningRateFinal;
 momentum = p.Results.Momentum;
@@ -131,6 +141,7 @@ for i = 1:length(num_hidden)
         'LearningRate', learnrate,...
         'Momentum', momentum,...
         'Regularizer', regularizer,...
+        'Sigma', sigma,...
         'Verbose', verbose,...
         'Visualize', (i == 1 && visualize));
     inputs = enci(inputs')';
@@ -147,7 +158,6 @@ end
 
 %% Stack the RBMs
 net_init = stack(enc_init, dec_init);
-net_init.trainParam.epochs = max_epochs;
 net_init.trainParam.showWindow = visualize;
 net_init.divideFcn = 'dividetrain';
 net_init.performFcn = 'mse';
@@ -155,9 +165,15 @@ net_init.performParam.regularization = 0;
 net_init.performParam.normalization = 'none';
 net_init.plotFcns = {'plotperform'};
 net_init.plotParams = {nnetParam}; % Dummy?
-net_init.trainFcn = 'traincgp';
+net_init.trainFcn = train_fcn;
+net_init.trainParam.epochs = max_epochs;
 
 %% Start fine tuning
+if verbose
+    fprintf('****************************************************************************\n');
+    fprintf('Fine tuning the DBN for %i epochs using training function ''%s''\n', max_epochs, train_fcn);
+    fprintf('****************************************************************************\n');
+end
 net = train(net_init, X', X');
 
 %% Set outputs

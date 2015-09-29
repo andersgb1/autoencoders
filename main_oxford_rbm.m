@@ -16,7 +16,7 @@ Niter_init = 50;
 Niter_fine = 200;
 
 % Layer sizes
-num_hidden = [2000 1000 250 30];
+num_hidden = [2000 1000 500 250 64];
 
 %% Load data
 % Image root path
@@ -61,7 +61,10 @@ else
         'OutputFunction', 'purelin',...
         'MaxEpochsInit', Niter_init,...
         'MaxEpochs', Niter_fine,...
-        'NumBatches', Ntrain/10,...
+        'NumBatches', Ntrain/128,...
+        'LearningRate', 0.01,...
+        'Regularizer', 0.0005,...
+        'Sigma', 0.01,...
         'Verbose', true,...
         'Visualize', true);
     save('data/oxford.mat', 'net', 'enc', 'dec', 'enc_init', 'dec_init');
@@ -76,7 +79,7 @@ disp 'Getting a PCA...'
 pca_train_feat = (train_images'-repmat(mu,Ntrain,1)) * c;
 
 %% Present reconstruction errors
-disp 'Presenting results...'
+disp 'Presenting reconstruction results...'
 % Reconstructions of training data before/after fine tuning and using PCA
 pca_train_rec = pca_train_feat * c' + repmat(mu,Ntrain,1);
 net_train_rec = net_init(train_images);
