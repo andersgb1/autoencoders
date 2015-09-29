@@ -150,8 +150,12 @@ net_init = stack(enc_init, dec_init);
 net_init.trainParam.epochs = max_epochs;
 net_init.trainParam.showWindow = visualize;
 net_init.divideFcn = 'dividetrain';
+net_init.performFcn = 'mse';
+net_init.performParam.regularization = 0;
+net_init.performParam.normalization = 'none';
 net_init.plotFcns = {'plotperform'};
 net_init.plotParams = {nnetParam}; % Dummy?
+net_init.trainFcn = 'traincgp';
 
 %% Start fine tuning
 net = train(net_init, X', X');

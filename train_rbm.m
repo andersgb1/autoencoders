@@ -239,8 +239,8 @@ for epoch = 1:max_epochs
 end % End loop over epochs
 
 %% Create output
-enc = create_layer(num_visible, num_hidden, hidden_function, W', Bhid', 'trainscg', 'Name', 'Encoder');
-dec = create_layer(num_hidden, num_visible, visible_function, W, Bvis', 'trainscg', 'Name', 'Decoder');
+enc = create_layer(num_visible, num_hidden, hidden_function, W', Bhid', 'traincgp', 'Name', 'Encoder');
+dec = create_layer(num_hidden, num_visible, visible_function, W, Bvis', 'traincgp', 'Name', 'Decoder');
 
 end
 
