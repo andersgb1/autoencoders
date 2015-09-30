@@ -75,13 +75,13 @@ net_init = stack(enc_init, dec_init);
 
 %% Get a PCA for the training images
 disp 'Getting a PCA...'
-[c,~,~,~,~,mu] = pca(train_images', 'NumComponents', num_hidden(end));
-pca_train_feat = (train_images'-repmat(mu,Ntrain,1)) * c;
+[c,mu] = train_pca(train_images', num_hidden(end));
+pca_train_feat = project_pca(train_images, c, mu);
 
 %% Present reconstruction errors
 disp 'Presenting reconstruction results...'
 % Reconstructions of training data before/after fine tuning and using PCA
-pca_train_rec = pca_train_feat * c' + repmat(mu,Ntrain,1);
+pca_train_rec = reproject_pca(pca_train_feat, c, mu);
 net_train_rec = net_init(train_images);
 net_fine_train_rec = net(train_images);
 fprintf('PCA(%d) reconstruction error: %.4f\n', num_hidden(end), mse(pca_train_rec' - train_images));
@@ -110,3 +110,5 @@ for i=1:100
     axis off equal
 end
 colormap gray
+
+disp 'All done!'
