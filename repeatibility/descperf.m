@@ -1,4 +1,4 @@
-function [cmatch_nn, tmatch_nn,cmatch_sim,tmatch_sim,cmatch_rn,tmatch_rn]=descperf(file1,file2,Hom,imf1,imf2,corresp_nn,twi)
+function [cmatch_nn, tmatch_nn,cmatch_sim,tmatch_sim,cmatch_rn,tmatch_rn]=descperf(file1,file2,Hom,~,~,corresp_nn,twi)
 %
 %
 %Computes repeatability and overlap score between two lists of features
@@ -37,8 +37,8 @@ function [cmatch_nn, tmatch_nn,cmatch_sim,tmatch_sim,cmatch_rn,tmatch_rn]=descpe
 
 fprintf(1,'Reading and sorting the regions...\n');
 
-[f1 s1 dimdesc1]=loadFeatures(file1);
-[f2 s2 dimdesc2]=loadFeatures(file2);
+[f1, s1, dimdesc1]=loadFeatures(file1);
+[f2, s2, dimdesc2]=loadFeatures(file2);
 
 H=load(Hom);
 
@@ -47,12 +47,12 @@ fprintf(1,'nb of regions in file1 %d - descriptor dimension %d.\n',s1,dimdesc1);
 fprintf(1,'nb of regions in file2 %d - descriptor dimension %d.\n',s2,dimdesc2);
 
 
-if size(f1,1)==5 & size(f1,1)==size(f2,1) 
-fprintf(1,'%s looks like file with affine regions...\n',file1);
-  if  size(f1,1)~= 5 | size(f1,1) ~= 5
+if size(f1,1)==5 && size(f1,1)==size(f2,1) 
+fprintf(1,'%s loo&ks like file with affine regions...\n',file1);
+  if  size(f1,1)~= 5 || size(f1,1) ~= 5
     error('Wrong ascii format of %s or %s files.',file1,file2);
   end
-elseif dimdesc1>1 & dimdesc1==dimdesc2 
+elseif dimdesc1>1 && dimdesc1==dimdesc2 
   fprintf(1,'%s, %s look like files with descriptors...\n',file1,file2);
 else
     error('Different descriptor dimension in %s or %s files.',file1,file2);
@@ -77,18 +77,18 @@ end
 HI=H(:, 1:3);
 H=inv(HI);
 fprintf(1,'Projecting 1 to 2...');
-[feat1 feat1t scales1]=project_regions(feat1',HI);
+[feat1, ~, ~]=project_regions(feat1',HI);
 fprintf(1,'and 2 to 1...\n');
-[feat2 feat2t scales2]=project_regions(feat2',H);
+[~, feat2t, ~]=project_regions(feat2',H);
 
-sf=min([size(feat1,1) size(feat2t,1)]);
+% sf=min([size(feat1,1) size(feat2t,1)]);
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 feat1=feat1';
-feat1t=feat1t';
+% feat1t=feat1t';
 feat2t=feat2t';
-feat2=feat2';
+% feat2=feat2';
 
 
 %rows nb are regions from image 1 and columns nb from image 2 
@@ -101,7 +101,7 @@ fprintf(1,' %.1f sec.\n',t);
 
 tds=size(twi);
 ds=size(dout);
-if tds(1)~=ds(1) | tds(2)~=ds(2)
+if tds(1)~=ds(1) || tds(2)~=ds(2)
   error('Matrix twi computed with repeatability.m does not match the matrix computed from input files.\n');
 end
 
@@ -144,6 +144,9 @@ fprintf(1,'\n\nSimilarity tmatching : ');
 
 tic;
 corresp_sim=sum(sum(twi));
+
+tmatch_sim = zeros(1,dss);
+cmatch_sim = zeros(1,dss);
 for i=1:dss
 dx=(tdout<match_dist(i));
 tmatch_sim(i)=sum(sum(dx));
@@ -163,10 +166,10 @@ precision=(tmatch_sim-cmatch_sim)./tmatch_sim;
   fprintf(1,'correct match sim: ');
   fprintf(1,'%d ',cmatch_sim);
   fprintf(1,'\n');
-  fprintf(1,'precision sim %: ');
+  fprintf(1,'precision sim %%: ');
   fprintf(1,'%0.3f ',precision);
   fprintf(1,'\n');
-  fprintf(1,'recall sim %: ');
+  fprintf(1,'recall sim %%: ');
   fprintf(1,'%0.3f ',recall);
   fprintf(1,'\n');
 
@@ -175,7 +178,7 @@ precision=(tmatch_sim-cmatch_sim)./tmatch_sim;
 fprintf(1,'\n\nNN ratio matching : ');
 
 tic;
-ds=size(sdout);
+% ds=size(sdout);
 rnmatch_dist=fliplr([1:.05:1.2,1.2:.3:2.8]);
 cmatch_rn=zeros(size(rnmatch_dist));
 tmatch_rn=zeros(size(rnmatch_dist));
@@ -221,7 +224,7 @@ for c1=1:s1,%%%%%%%%%%%%%%%%%
 Mi1=[feat(c1,3) feat(c1,4);feat(c1,4) feat(c1,5)];
 
 %compute affine transformation
-[v1 e1]=eig(Mi1);
+[~, e1]=eig(Mi1);
 d1=(1/sqrt(e1(1))); 
 d2=(1/sqrt(e1(4))); 
 sc1=sqrt(d1*d2);
@@ -242,8 +245,10 @@ l1_2=H*l1';
 l1_2=l1_2/l1_2(3);
 featp(c1,1)=l1_2(1);
 featp(c1,2)=l1_2(2);
-BMB=inv(Aff*inv(Mi1)*Aff');
-[v1 e1]=eig(BMB);
+Mi1inv = [Mi1(2,2) -Mi1(1,2) ; -Mi1(2,1) Mi1(1,1)] / det(Mi1);
+BMB=inv(Aff*Mi1inv*Aff');
+% BMB=inv(Aff*inv(Mi1)*Aff');
+[~, e1]=eig(BMB);
 featp(c1,6)=(1/sqrt(e1(1)));
 featp(c1,7)=(1/sqrt(e1(4))); 
 featp(c1,3:5)=[BMB(1) BMB(2) BMB(4)];
@@ -256,7 +261,7 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-function Aff=getAff(x,y,sc,H)
+function Aff=getAff(x,y,~,H)
 h11=H(1);
 h12=H(4);
 h13=H(7);
@@ -276,7 +281,7 @@ fydy=h22/(h31*x + h32*y +h33) - (h21*x + h22*y +h23)*h32/(h31*x + h32*y +h33)^2;
 end
 
 
-function [feat nb dim]=loadFeatures(file)
+function [feat, nb, dim]=loadFeatures(file)
 fid = fopen(file, 'r');
 dim=fscanf(fid, '%f',1);
 if dim==1

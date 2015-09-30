@@ -1,7 +1,7 @@
 clear;clc;close all;
 
 % Image root path
-root='graf';
+root='repeatibility/graf';
 
 % Image pair to consider
 idx1 = '1';
