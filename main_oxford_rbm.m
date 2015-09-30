@@ -28,7 +28,8 @@ idxx = {'1', '2', '3', '4', '5', '6'};
 % Detector
 % Oxford detectors: har, harlap, heslap, haraff, hesaff
 % VLFeat detectors: dog, hessian, hessianlaplace, harrislaplace, multiscalehessian, multiscaleharris
-detector='hesaff';
+% Our detectors: custom
+detector='custom';
 
 % Use the helper functions to load the training images (column-major)
 train_images = [];
@@ -36,7 +37,7 @@ for i=1:numel(idxx)
     idx = idxx{i};
     pfile = [root '/img' idx '.ppm.' detector '.patch'];
     assert(exist(pfile, 'file') > 0);
-    [~, tmp] = vl_ubcread_frames_descs('repeatibility/graf/img1.ppm.hesaff.patch');
+    [~, tmp] = vl_ubcread_frames_descs(pfile);
     train_images = [train_images tmp];
 end
 
