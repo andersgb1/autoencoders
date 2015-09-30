@@ -57,45 +57,41 @@ for idxc = idxx
     assert(size(frames,2) == size(patches,2));
     N = size(frames,2);
     
-    %% PCA section
-    % Get a PCA from first image
-    if idx == '1'
-        disp 'Computing PCA space from first image...';
-        [c,~,~,~,~,mu] = pca(patches', 'NumComponents', 30);
-    end
-    assert(exist('c', 'var') > 0 && exist('mu', 'var') > 0, 'PCA from first image non-existent!');
-    % Project
-    pca_patches = (patches'-repmat(mu,N,1)) * c;
-    pca_patches = pca_patches'; % Change to column-major (one feature per column)
-    
     %% NN section
     if idx == '1'
         % Get network
-        load data/patch_rbm_fine.mat
-        
-        % Get encoder
-        enc_fine = stack(get_layer(net_fine, 1), get_layer(net_fine,2), get_layer(net_fine, 3), get_layer(net_fine, 4));
+        load data/oxford.mat
     end
-    assert(exist('net_fine', 'var') > 0 && exist('enc_fine', 'var') > 0);
+    assert(exist('net', 'var') > 0 && exist('enc', 'var') > 0);
     
     % If network input and patch sizes mismatch, rescale all patches
-    if net_fine.input.size ~= size(patches,1)
+    if net.input.size ~= size(patches,1)
         if idx == '1'
             warning('Inconsistent network and data sizes! Rescaling all patches...');
         end
         pwh = sqrt(size(patches,1)); % Patch width/height
-        assert(mod(net_fine.input.size,2) == 0); % Network input size must be even
-        nwh = sqrt(net_fine.input.size); % Network width/height
-        tmp = zeros(net_fine.input.size, N);
+        assert(mod(net.input.size,2) == 0); % Network input size must be even
+        nwh = sqrt(net.input.size); % Network width/height
+        tmp = zeros(net.input.size, N);
         for i=1:N
             patchi = reshape(patches(:,i), pwh, pwh);
-            tmp(:,i) = reshape(imresize(patchi, [nwh nwh]), net_fine.input.size, 1);
+            tmp(:,i) = reshape(imresize(patchi, [nwh nwh]), net.input.size, 1);
         end
         patches = tmp;
     end
     
     % Encode
-    enc_patches = enc_fine(patches);
+    enc_patches = enc(patches);
+    
+    %% PCA section
+    % Get a PCA from first image
+    if idx == '1'
+        disp 'Computing PCA space from first image...';
+        [c,mu] = train_pca(patches', size(enc_patches, 1));
+    end
+    assert(exist('c', 'var') > 0 && exist('mu', 'var') > 0, 'PCA from first image non-existent!');
+    % Project and transpose back to column-major (one feature per column)
+    pca_patches = project_pca(patches', c, mu)';
     
     %% Output
     % Save features
