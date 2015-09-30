@@ -48,8 +48,7 @@ for k = 1:numKeypoints
       % Record format: i,j,s,th
       [record, count] = fscanf(g, '%f', [1 4]) ;
       if count ~= 4
-        error(...
-          sprintf('Invalid keypoint file (parsing keypoint %d, frame part)',k) );
+        error('Invalid keypoint file (parsing keypoint %d, frame part)',k);
       end
       P(:,k) = record(:) ;
 
@@ -57,8 +56,7 @@ for k = 1:numKeypoints
       % Record format: x, y, a, b, c such that x' [a b ; b c] x = 1
       [record, count] = fscanf(g, '%f', [1 5]) ;
       if count ~= 5
-        error(...
-          sprintf('Invalid keypoint file (parsing keypoint %d, frame part)',k) );
+        error('Invalid keypoint file (parsing keypoint %d, frame part)',k);
       end
       P(:,k) = record(:) ;
   end
