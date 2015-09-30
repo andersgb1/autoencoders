@@ -1,7 +1,7 @@
 clear;clc;
 
 % Image root path
-root='graf';
+root='repeatibility/graf';
 
 % Image(s) to consider
 idxx = {'1', '2', '3', '4', '5', '6'};
@@ -9,8 +9,15 @@ idxx = {'1', '2', '3', '4', '5', '6'};
 % Detector
 % Oxford detectors: har, harlap, heslap, haraff, hesaff
 % VLFeat detectors: dog, hessian, hessianlaplace, harrislaplace, multiscalehessian, multiscaleharris
-detector='hesaff';
+% Our: custom
+detector='custom';
 thres = 0.025; % Only applied for VLFeat detectors
+
+% Set custom frame parameters
+custom_frames = [];
+radii = 20:10:50; % Range of radii
+angle_inc = pi/4;
+angles = angle_inc:angle_inc:2*pi; % Range of angles
 
 % Descriptor
 % sift, liop, patch, none
@@ -46,6 +53,28 @@ for idxc = idxx
         warning('Trying to remove VLFeat''s %d duplicates...', size(frames,2)-Nox);
         frames = frames(:,1:Nox);
         descriptors = descriptors(:,1:Nox);
+    elseif strcmpi(detector, 'custom')
+        if ~strcmpi(desc, 'patch')
+            warning('Custom (many) frames are being computed. It is strongly advised to use the ''patch'' descriptor!\n');
+        end
+        % Generate frames
+        frames_custom = [];
+        for rad=radii
+            for angle=angles
+                xr = rad:rad:size(imgs, 2) - rad + 1;
+                yr = rad:rad:size(imgs, 1) - rad + 1;
+                [x,y] = meshgrid(xr, yr) ;
+                f = [x(:)' ; y(:)' ; rad*ones(1,numel(x)) ; angle*ones(1,numel(x))];
+                frames_custom = [frames_custom f];
+            end
+        end
+        % Run
+        [frames, descriptors] = vl_covdet(imgs,...
+            'EstimateAffineShape', false,...
+            'EstimateOrientation', false,...
+            'Frames', frames_custom,...
+            'Descriptor', desc,...
+            'verbose');
     else
         % Run VLFeat detector+descriptor
         [frames, descriptors] = vl_covdet(imgs,...
@@ -77,7 +106,7 @@ for idxc = idxx
 
     if ~strcmpi(desc, 'none')
         % Save descriptors
-        if strcmpi(desc, 'sift') % SPECIAL CASE  SIFT NAME CONFLICT
+        if strcmpi(desc, 'sift') % SPECIAL CASE: SIFT NAME CONFLICT
             descfile = [root '/img' idx '.ppm.' detector '.sift_vl'];
         else
             descfile = [root '/img' idx '.ppm.' detector '.' desc];
