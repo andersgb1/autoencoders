@@ -15,7 +15,7 @@ detector = 'hesaff';
 % Descriptor(s)
 % Oxford descriptors: jla, sift, gloh, mom, koen, cf, sc, spin, pca, cc
 % VLFeat descriptors: sift_vl, liop, patch
-% Our descriptors: pca
+% Our descriptors: pca, enc
 descs = {'sift', 'pca', 'enc'};
 
 % Matching type
