@@ -69,11 +69,8 @@ function [net,varargout] = train_dbn(X, num_hidden, varargin)
 %
 %       'Visualize' (false): logical, set to true to show status plots
 %
-%       'Callback' (0): here you can specify a handle to a function, which
-%       will be called after every epoch. This is useful if you want to
-%       show some kind of progress of where we are. The function handle
-%       must take one argument, and then it will be called with the current
-%       epoch index.
+%       'Resume' (false): logical, if set to true, allow for resuming the
+%       pretraining. This means that during the 
 %
 %       See also TRAIN_RBM.
 
@@ -97,6 +94,7 @@ p.addParameter('TrainFcn', 'trainscg', @ischar)
 p.addParameter('RowMajor', true, @islogical)
 p.addParameter('Verbose', false, @islogical)
 p.addParameter('Visualize', false, @islogical)
+p.addParameter('Resume', false, @islogical)
 p.parse(varargin{:});
 % Get opts
 hidden_function = p.Results.HiddenFunction;
@@ -115,6 +113,7 @@ momentum = p.Results.Momentum;
 row_major = p.Results.RowMajor;
 verbose = p.Results.Verbose;
 visualize = p.Results.Visualize;
+resume = p.Results.Resume;
 % Transpose data to ensure row-major
 if ~row_major, X = X'; end
 
@@ -132,18 +131,25 @@ for i = 1:length(num_hidden)
         learnrate = learning_rate;
     end
     
-    [enci,deci] = train_rbm(inputs, numhid,...
-        'HiddenFunction', hidfun,...
-        'VisibleFunction', visible_function,...
-        'UnitFunction', unit_function,...
-        'MaxEpochs', max_epochs_init,...
-        'NumBatches', num_batches,...
-        'LearningRate', learnrate,...
-        'Momentum', momentum,...
-        'Regularizer', regularizer,...
-        'Sigma', sigma,...
-        'Verbose', verbose,...
-        'Visualize', (i == 1 && visualize));
+    rbmfile = sprintf('rbm%i.mat', i); 
+    if resume && exist(rbmfile, 'file')
+        if verbose, fprintf('Loading RBM %i from file...\n', i); end
+        load(rbmfile);
+    else
+        [enci,deci] = train_rbm(inputs, numhid,...
+            'HiddenFunction', hidfun,...
+            'VisibleFunction', visible_function,...
+            'UnitFunction', unit_function,...
+            'MaxEpochs', max_epochs_init,...
+            'NumBatches', num_batches,...
+            'LearningRate', learnrate,...
+            'Momentum', momentum,...
+            'Regularizer', regularizer,...
+            'Sigma', sigma,...
+            'Verbose', verbose,...
+            'Visualize', (i == 1 && visualize));
+        if resume, save(rbmfile, 'enci', 'deci'); end
+    end
     inputs = enci(inputs')';
     
     if i == 1
@@ -158,7 +164,6 @@ end
 
 %% Stack the RBMs
 net_init = stack(enc_init, dec_init);
-net_init.trainParam.showWindow = visualize;
 net_init.divideFcn = 'dividetrain';
 net_init.performFcn = 'mse';
 net_init.performParam.regularization = 0;
@@ -167,6 +172,9 @@ net_init.plotFcns = {'plotperform'};
 net_init.plotParams = {nnetParam}; % Dummy?
 net_init.trainFcn = train_fcn;
 net_init.trainParam.epochs = max_epochs;
+net_init.trainParam.showWindow = visualize;
+net_init.trainParam.showCommandLine = verbose;
+net_init.trainParam.show = 1;
 
 %% Start fine tuning
 if verbose
