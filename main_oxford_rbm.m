@@ -2,6 +2,9 @@ close all;
 
 %% Setup parameters for script
 
+% Ensure deterministic results
+rng('default')
+
 path('repeatibility', path);
 
 % Set to true to disable loading existing autoencoders
@@ -37,21 +40,22 @@ for i=1:numel(idxx)
     idx = idxx{i};
     pfile = [root '/img' idx '.ppm.' detector '.patch'];
     assert(exist(pfile, 'file') > 0);
+    fprintf('Loading data from %s...\n', pfile);
     [~, tmp] = vl_ubcread_frames_descs(pfile);
     train_images = [train_images tmp];
 end
 
-% Reduce training set
-if Nreduce > 0
-    warning('Reducing training set to %d examples...', Nreduce);
-    train_images = train_images(:,1:Nreduce);
-end
-
-% Number of training/test cases
+% Number of training cases
 Ntrain = size(train_images,2);
 
-% Ensure deterministic results
-rng('default')
+%% Reduce training set
+if Nreduce > 0
+    idx = randperm(Ntrain);
+    idx = idx(1:Nreduce);
+    warning('Reducing training set to %d examples...', length(idx));
+    train_images = train_images(:,idx);
+    Ntrain = size(train_images,2);
+end
 
 %% Fine tune (or load fine tuned) network
 if ~force_training && exist('data/oxford.mat', 'file')
@@ -67,7 +71,8 @@ else
         'Regularizer', 0.0005,...
         'Sigma', 0.01,...
         'Verbose', true,...
-        'Visualize', true);
+        'Visualize', true,...
+        'Resume', ~force_training);
     save('data/oxford.mat', 'net', 'enc', 'dec', 'enc_init', 'dec_init');
 end
 
@@ -77,7 +82,7 @@ net_init = stack(enc_init, dec_init);
 %% Get a PCA for the training images
 disp 'Getting a PCA...'
 [c,mu] = train_pca(train_images', num_hidden(end));
-pca_train_feat = project_pca(train_images, c, mu);
+pca_train_feat = project_pca(train_images', c, mu);
 
 %% Present reconstruction errors
 disp 'Presenting reconstruction results...'

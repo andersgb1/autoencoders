@@ -2,6 +2,9 @@ close all;
 
 %% Setup parameters for script
 
+% Ensure deterministic results
+rng('default')
+
 % Set to true to disable loading existing autoencoders
 force_training = false;
 
@@ -21,19 +24,18 @@ num_hidden = [1000 500 250 30];
 % (column-major)
 [train_images, train_labels, test_images, test_labels] = load_mnist('mnist');
 
-% Reduce training set
+%% Reduce training set
 if Nreduce > 0
+    idx = randperm(Ntrain);
+    idx = idx(1:Nreduce);
     warning('Reducing training set to %d examples...', Nreduce);
-    train_images = train_images(:,1:Nreduce);
-    train_labels = train_labels(1:Nreduce);
+    train_images = train_images(:,idx);
+    train_labels = train_labels(idx);
 end
 
 % Number of training/test cases
 Ntrain = length(train_labels);
 Ntest = length(test_labels);
-
-% Ensure deterministic results
-rng('default')
 
 %% Fine tune (or load fine tuned) network
 if ~force_training && exist('data/mnist.mat', 'file')
@@ -46,7 +48,8 @@ else
         'MaxEpochs', Niter_fine,...
         'NumBatches', Ntrain/100,...
         'Verbose', true,...
-        'Visualize', true);
+        'Visualize', true,...
+        'Resume', ~force_training);
     save('data/mnist.mat', 'net', 'enc', 'dec', 'enc_init', 'dec_init');
 end
 
