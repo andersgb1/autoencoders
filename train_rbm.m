@@ -43,12 +43,7 @@ function [enc,dec] = train_rbm(X, num_hidden, varargin)
 %
 %       'Visualize' (false): logical, set to true to show status plots
 %
-%       'Callback' (0): here you can specify a handle to a function, which
-%       will be called after every epoch. This is useful if you want to
-%       show some kind of progress of where we are. The function handle
-%       must take one argument, and then it will be called with the current
-%       epoch index.
-%
+%       See also TRAIN_DBN.
 
 %% Parse inputs
 % Set opts
@@ -66,7 +61,6 @@ p.addParameter('Sigma', 0.1, @isfloat)
 p.addParameter('RowMajor', true, @islogical)
 p.addParameter('Verbose', false, @islogical)
 p.addParameter('Visualize', false, @islogical)
-p.addParameter('Callback', 0);
 p.parse(varargin{:});
 % Get opts
 hidden_function = p.Results.HiddenFunction;
@@ -81,7 +75,6 @@ momentum = p.Results.Momentum;
 row_major = p.Results.RowMajor;
 verbose = p.Results.Verbose;
 visualize = p.Results.Visualize;
-callback = p.Results.Callback;
 % Transpose data to ensure row-major
 if ~row_major, X = X'; end
 % Get unit function
@@ -240,9 +233,6 @@ for epoch = 1:max_epochs
         colormap gray
         drawnow
     end % End visualization
-    
-    % Finally invoke the callback
-    if isa(callback, 'function_handle'), feval(callback, epoch); end
 end % End loop over epochs
 
 %% Create output
