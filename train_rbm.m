@@ -25,7 +25,10 @@ function [enc,dec] = train_rbm(X, num_hidden, varargin)
 %
 %       'MaxEpochs' (50): number of training iterations
 %
-%       'NumBatches' (100): number of mini-batches considered in each epoch
+%       'Batches' (empty cell): mini-batches considered in each epoch. If
+%       you want to split the training data into mini-batches during each
+%       epoch, this argument should contain a cell array, each element
+%       being indices for a mini-batch.
 %
 %       'LearningRate' (0.1): learning rate
 %
@@ -53,7 +56,7 @@ p.addParameter('HiddenFunction', 'logsig', @ischar)
 p.addParameter('VisibleFunction', 'logsig', @ischar)
 p.addParameter('UnitFunction', 'default', @ischar)
 p.addParameter('MaxEpochs', 50, @isnumeric)
-p.addParameter('NumBatches', 100, @isnumeric)
+p.addParameter('Batches', {}, @iscell)
 p.addParameter('LearningRate', 0.1, @isfloat)
 p.addParameter('Momentum', 0.9, @isfloat)
 p.addParameter('Regularizer', 0.0002, @isfloat)
@@ -67,7 +70,7 @@ hidden_function = p.Results.HiddenFunction;
 visible_function = p.Results.VisibleFunction;
 unit_function = p.Results.UnitFunction;
 max_epochs = p.Results.MaxEpochs;
-num_batches = p.Results.NumBatches;
+batches = p.Results.Batches;
 regularizer = p.Results.Regularizer;
 sigma = p.Results.Sigma;
 learning_rate = p.Results.LearningRate;
@@ -116,13 +119,12 @@ if visualize
 end
 
 %% Setup mini-batches
-Nbatch = N;
-if num_batches > 1, Nbatch = floor(N / num_batches); end
+if isempty(batches), batches = {1:N}; end
 
 %% Verbosity
 if verbose
     fprintf('****************************************************************************\n');
-    fprintf('Training a %i-%i RBM using %i training examples and a batch size of %i\n', num_visible, num_hidden, N, Nbatch);
+    fprintf('Training a %i-%i RBM using %i training examples and %i batch(es)\n', num_visible, num_hidden, N, length(batches));
     fprintf('Using hidden and visible unit transfer functions ''%s'' and ''%s''\n', hidden_function, visible_function);
     fprintf('Using unit function ''%s''\n', unit_function);
     fprintf('****************************************************************************\n');
@@ -140,24 +142,17 @@ for epoch = 1:max_epochs
     % Loop over batches
     err = 0;
     chars = 0;
-    for batch_begin = 1:Nbatch:N
-        %% Initialize batch data
-        batch_end = min([batch_begin + Nbatch - 1, N]);
-        batch_size = batch_end - batch_begin + 1;
-        
-        % Verbosity
+    for i = 1:length(batches)
+        %% Verbosity
         if verbose
-            for i = 1:chars, fprintf('\b'); end
-            chars = fprintf('%i/%i', batch_end, N);
-            if batch_end == N, fprintf('\n'); end
+            for j = 1:chars, fprintf('\b'); end
+            chars = fprintf('Batch %i/%i of size %i', i, length(batches), length(batches{i}));
+            if i == length(batches), fprintf('\n'); end
         end
         
-        % Get batch data
-        if batch_end > N
-            Xb = X(batch_begin:end,:);
-        else
-            Xb = X(batch_begin:batch_end,:);
-        end
+        %% Get batch data
+        Xb = X(batches{i},:);
+        batch_size = size(Xb,1);
         
         %% Positive phase
         % Forward pass through first layer

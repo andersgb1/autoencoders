@@ -46,7 +46,10 @@ function [net,varargout] = train_dbn(X, num_hidden, varargin)
 %       'MaxEpochs' (200): number of training iterations for the fine
 %       tuning based on backpropagation
 %
-%       'NumBatches' (100): number of mini-batches considered in each epoch
+%       'Batches' (empty cell): mini-batches considered in each epoch. If
+%       you want to split the training data into mini-batches during each
+%       epoch, this argument should contain a cell array, each element
+%       being indices for a mini-batch.
 %
 %       'LearningRate' (0.1): learning rate
 %
@@ -84,7 +87,7 @@ p.addParameter('VisibleFunction', 'logsig', @ischar)
 p.addParameter('UnitFunction', 'default', @ischar)
 p.addParameter('MaxEpochsInit', 50, @isnumeric)
 p.addParameter('MaxEpochs', 200, @isnumeric)
-p.addParameter('NumBatches', 100, @isnumeric)
+p.addParameter('Batches', {}, @iscell)
 p.addParameter('LearningRate', 0.1, @isfloat)
 p.addParameter('LearningRateFinal', 0.001, @isfloat)
 p.addParameter('Momentum', 0.9, @isfloat)
@@ -103,7 +106,7 @@ visible_function = p.Results.VisibleFunction;
 unit_function = p.Results.UnitFunction;
 max_epochs_init = p.Results.MaxEpochsInit;
 max_epochs = p.Results.MaxEpochs;
-num_batches = p.Results.NumBatches;
+batches = p.Results.Batches;
 regularizer = p.Results.Regularizer;
 sigma = p.Results.Sigma;
 train_fcn = p.Results.TrainFcn;
@@ -141,7 +144,7 @@ for i = 1:length(num_hidden)
             'VisibleFunction', visible_function,...
             'UnitFunction', unit_function,...
             'MaxEpochs', max_epochs_init,...
-            'NumBatches', num_batches,...
+            'Batches', batches,...
             'LearningRate', learnrate,...
             'Momentum', momentum,...
             'Regularizer', regularizer,...
@@ -182,7 +185,49 @@ if verbose
     fprintf('Fine tuning the DBN for %i epochs using training function ''%s''\n', max_epochs, train_fcn);
     fprintf('****************************************************************************\n');
 end
-net = train(net_init, X', X');
+
+
+
+% net = train(net_init, X', X');
+
+
+
+N = size(X,1);
+net = net_init;
+if isempty(batches)
+    batches = {1:N};
+else
+    mulbatch = 10;
+    tmp = cell(1, ceil(length(batches) / mulbatch));
+    for i = 1:length(batches)
+        idx = ceil(i / mulbatch);
+        tmp{idx} = [tmp{idx} batches{i}];
+    end
+    batches = tmp;
+end
+
+iter = 1;
+netfile = 'net.mat';
+if resume && exist(netfile, 'file')
+    load(netfile);
+    if verbose, fprintf('Resuming fine tuning from batch %i...\n', iter); end
+end
+for i = iter:length(batches)
+    fprintf('%.2f %%\n', 100*i/length(batches));
+    
+    % Initialize batch data
+    Xb = X(batches{i},:);
+    
+    net = train(net, Xb', Xb');
+    
+    if resume
+        iter = i;
+        if verbose, fprintf('Saving fine tuned net for batch %i...\n', iter); end
+        save(netfile, 'net', 'iter');
+    end
+end
+
+    
 
 %% Set outputs
 % Get encoder
