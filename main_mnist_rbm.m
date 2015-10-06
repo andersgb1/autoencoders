@@ -5,8 +5,8 @@ close all;
 % Ensure deterministic results
 rng('default')
 
-% Set to true to disable loading existing autoencoders
-force_training = false;
+% Set to true to enable re-use of training data and networks
+resume = false;
 
 % Set to a positive value to reduce training set
 Nreduce = 0;
@@ -37,8 +37,14 @@ end
 Ntrain = length(train_labels);
 Ntest = length(test_labels);
 
-%% Fine tune (or load fine tuned) network
-if ~force_training && exist('data/mnist.mat', 'file')
+%% Create batches
+if ~(resume && exist('batches', 'var') > 0)
+    disp 'Creating batches...'
+    batches = create_batches(train_images', round(Ntrain/100), 'Method', 'Linear', 'Verbose', true);
+end
+
+%% Train (or load) network
+if resume && exist('data/mnist.mat', 'file')
     disp 'Loading pretrained fine tuned network file...'
     load data/mnist.mat;
 else
@@ -46,10 +52,10 @@ else
         'OutputFunction', 'purelin',...
         'MaxEpochsInit', Niter_init,...
         'MaxEpochs', Niter_fine,...
-        'NumBatches', Ntrain/100,...
+        'Batches', batches,...
         'Verbose', true,...
         'Visualize', true,...
-        'Resume', ~force_training);
+        'Resume', resume);
     save('data/mnist.mat', 'net', 'enc', 'dec', 'enc_init', 'dec_init');
 end
 
@@ -65,11 +71,11 @@ pca_train_feat = project_pca(train_images', c, mu);
 disp 'Presenting reconstruction results...'
 % Reconstructions of training data before/after fine tuning and using PCA
 pca_train_rec = reproject_pca(pca_train_feat, c, mu);
+fprintf('    PCA(%d) reconstruction error: %.4f\n', num_hidden(end), mse(pca_train_rec' - train_images));
 net_train_rec = net_init(train_images);
+fprintf('    NN reconstruction error: %.4f\n', mse(net_train_rec - train_images));
 net_fine_train_rec = net(train_images);
-fprintf('PCA(%d) reconstruction error: %.4f\n', num_hidden(end), mse(pca_train_rec' - train_images));
-fprintf('NN reconstruction error: %.4f\n', mse(net_train_rec - train_images));
-fprintf('Fine-tuned NN reconstruction error: %.4f\n', mse(net_fine_train_rec - train_images));
+fprintf('    Fine-tuned NN reconstruction error: %.4f\n', mse(net_fine_train_rec - train_images));
 idx = randi(Ntrain);
 wh = sqrt(size(train_images,1)); % Image width/height
 figure('Name', 'Example')
