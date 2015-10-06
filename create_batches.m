@@ -24,9 +24,11 @@ if strcmpi(method, 'Linear') || strcmpi(method, 'Random')
     % Subdivide indices into the final batches
     sz = round(size(X,1) / N); % Batch size
     batches = cell(1,N);
-    for i = 1:sz:N
+    ibatch = 1;
+    for i = 1:sz:size(X,1)
         idxend = min(i+sz-1, size(X,1));
-        batches{i} = idx(i:idxend);
+        batches{ibatch} = idx(i:idxend);
+        ibatch = ibatch+1;
     end
 elseif strcmpi(method, 'Cluster') || strcmpi(method, 'ClusterPCA')
     % Resize
