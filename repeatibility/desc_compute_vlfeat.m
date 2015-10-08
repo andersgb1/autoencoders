@@ -23,6 +23,9 @@ angles = angle_inc:angle_inc:2*pi; % Range of angles
 % sift, liop, patch, none
 desc = 'patch';
 
+% Use this for patches
+write_desc_binary = true;
+
 % Loop over images
 for idxc = idxx
     % Loops over cells return single cells
@@ -112,14 +115,27 @@ for idxc = idxx
             descfile = [root '/img' idx '.ppm.' detector '.' desc];
         end
         
-        fprintf('Saving %i descriptors to %s...\n', N, descfile);
+        if write_desc_binary
+            fprintf('Saving %i descriptors to %s in BINARY format...\n', N, descfile);
+        else
+            fprintf('Saving %i descriptors to %s in ASCII format...\n', N, descfile);
+        end
         fid = fopen(descfile, 'w');
-        fprintf(fid, '%i\n', size(descriptors,1));
-        fprintf(fid, '%i\n', size(descriptors,2));
-        for i=1:N
-            fprintf(fid, '%.2f %.2f %f %f %f ', frames_ox(:,i));
-            fprintf(fid, '%f ', descriptors(:,i));
-            fprintf(fid, '\n');
+        if write_desc_binary
+            fwrite(fid, size(descriptors,1), 'uint');
+            fwrite(fid, size(descriptors,2), 'uint');
+            for i=1:N
+                fwrite(fid, frames_ox(:,i), 'double');
+                fwrite(fid, descriptors(:,i), 'double');
+            end
+        else
+            fprintf(fid, '%i\n', size(descriptors,1));
+            fprintf(fid, '%i\n', size(descriptors,2));
+            for i=1:N
+                fprintf(fid, '%.2f %.2f %f %f %f ', frames_ox(:,i));
+                fprintf(fid, '%f ', descriptors(:,i));
+                fprintf(fid, '\n');
+            end
         end
         fclose(fid);
     end

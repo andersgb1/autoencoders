@@ -1,11 +1,8 @@
-function [f,d] = vl_ubcread_frames_descs(file)
+function [f,d] = vl_ubcread_frames_descs(file, binary)
 % SIFTREAD Read Lowe's SIFT implementation data files
 %   [F,D] = VL_UBCREAD(FILE) reads the frames F and the descriptors D
 %   from FILE in UBC (Lowe's original implementation of SIFT) format
 %   and returns F and D as defined by VL_SIFT().
-%
-%   VL_UBCREAD(FILE, 'FORMAT', 'OXFORD') assumes the format used by
-%   Oxford VGG implementations .
 %
 %   See also: VL_SIFT(), VL_HELP().
 
@@ -20,13 +17,23 @@ function [f,d] = vl_ubcread_frames_descs(file)
 opts.verbosity = 0;
 opts.format = 'oxford' ;
 
+if nargin == 1
+    bin = 0;
+else
+    bin = binary;
+end
+
 g = fopen(file, 'r');
 if g == -1
     error(['Could not open file ''', file, '''.']) ;
 end
-[header, count] = fscanf(g, '%d', [1 2]) ;
-if count ~= 2
-    error('Invalid keypoint file header.');
+if bin
+    header = fread(g, 2, 'uint');
+else
+    [header, count] = fscanf(g, '%d', [1 2]) ;
+    if count ~= 2
+        error('Invalid keypoint file header.');
+    end
 end
 switch opts.format
   case 'ubc'
@@ -61,31 +68,40 @@ for k = 1:numKeypoints
 
   switch opts.format
     case 'ubc'
-      % Record format: i,j,s,th
-      [record, count] = fscanf(g, '%f', [1 4]) ;
-      if count ~= 4
-        error(...
-          sprintf('Invalid keypoint file (parsing keypoint %d, frame part)',k) );
-      end
-      P(:,k) = record(:) ;
+        error('UBC not supported!');
+%       % Record format: i,j,s,th
+%       [record, count] = fscanf(g, '%f', [1 4]) ;
+%       if count ~= 4
+%         error(...
+%           sprintf('Invalid keypoint file (parsing keypoint %d, frame part)',k) );
+%       end
+%       P(:,k) = record(:) ;
 
     case 'oxford'
       % Record format: x, y, a, b, c such that x' [a b ; b c] x = 1
-      [record, count] = fscanf(g, '%f', [1 5]) ;
-      if count ~= 5
-        error(...
-          sprintf('Invalid keypoint file (parsing keypoint %d, frame part)',k) );
+      if bin
+          record = fread(g, 5, 'double');
+      else
+          [record, count] = fscanf(g, '%f', [1 5]) ;
+          if count ~= 5
+            error(...
+              sprintf('Invalid keypoint file (parsing keypoint %d, frame part)',k) );
+          end
       end
       P(:,k) = record(:) ;
   end
 
 
 	% Record format: descriptor
-	[record, count] = fscanf(g, '%f', [1 descrLen]) ;
-	if count ~= descrLen
-		error(...
-			sprintf('Invalid keypoint file (parsing keypoint %d, descriptor part)',k) );
-	end
+    if bin
+        record = fread(g, descrLen, 'double');
+    else
+        [record, count] = fscanf(g, '%f', [1 descrLen]) ;
+        if count ~= descrLen
+            error(...
+                sprintf('Invalid keypoint file (parsing keypoint %d, descriptor part)',k) );
+        end
+    end
 	L(:,k) = record(:) ;
 
 end
