@@ -188,44 +188,44 @@ end
 
 
 
-% net = train(net_init, X', X');
+net = train(net_init, X', X');
 
 
 
-N = size(X,1);
-net = net_init;
-if isempty(batches)
-    batches = {1:N};
-else
-    mulbatch = 10;
-    tmp = cell(1, ceil(length(batches) / mulbatch));
-    for i = 1:length(batches)
-        idx = ceil(i / mulbatch);
-        tmp{idx} = [tmp{idx} batches{i}];
-    end
-    batches = tmp;
-end
-
-iter = 1;
-netfile = 'net.mat';
-if resume && exist(netfile, 'file')
-    load(netfile);
-    if verbose, fprintf('Resuming fine tuning from batch %i...\n', iter); end
-end
-for i = iter:length(batches)
-    fprintf('%.2f %%\n', 100*i/length(batches));
-    
-    % Initialize batch data
-    Xb = X(batches{i},:);
-    
-    net = train(net, Xb', Xb');
-    
-    if resume
-        iter = i;
-        if verbose, fprintf('Saving fine tuned net for batch %i...\n', iter); end
-        save(netfile, 'net', 'iter');
-    end
-end
+% N = size(X,1);
+% net = net_init;
+% if isempty(batches)
+%     batches = {1:N};
+% else
+%     mulbatch = 10;
+%     tmp = cell(1, ceil(length(batches) / mulbatch));
+%     for i = 1:length(batches)
+%         idx = ceil(i / mulbatch);
+%         tmp{idx} = [tmp{idx} batches{i}];
+%     end
+%     batches = tmp;
+% end
+% 
+% iter = 1;
+% netfile = 'net.mat';
+% if resume && exist(netfile, 'file')
+%     load(netfile);
+%     if verbose, fprintf('Resuming fine tuning from batch %i...\n', iter); end
+% end
+% for i = iter:length(batches)
+%     fprintf('%.2f %%\n', 100*i/length(batches));
+%     
+%     % Initialize batch data
+%     Xb = X(batches{i},:);
+%     
+%     net = train(net, Xb', Xb');
+%     
+%     if resume
+%         iter = i;
+%         if verbose, fprintf('Saving fine tuned net for batch %i...\n', iter); end
+%         save(netfile, 'net', 'iter');
+%     end
+% end
 
     
 
