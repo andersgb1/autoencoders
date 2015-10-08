@@ -32,17 +32,19 @@ idxx = {'1', '2', '3', '4', '5', '6'};
 % Oxford detectors: har, harlap, heslap, haraff, hesaff
 % VLFeat detectors: dog, hessian, hessianlaplace, harrislaplace, multiscalehessian, multiscaleharris
 % Our detectors: custom
-detector='custom';
+detector = 'custom';
+descriptor = 'patch';
+binary = true; % Use with patch
 
 % Use the helper functions to load the training images (column-major)
 if ~(resume && exist('train_images', 'var') > 0)
     train_images = [];
     for i=1:numel(idxx)
         idx = idxx{i};
-        pfile = [root '/img' idx '.ppm.' detector '.patch'];
+        pfile = [root '/img' idx '.ppm.' detector '.' descriptor];
         assert(exist(pfile, 'file') > 0);
         fprintf('Loading data from %s...\n', pfile);
-        [~, tmp] = vl_ubcread_frames_descs(pfile);
+        [~, tmp] = vl_ubcread_frames_descs(pfile, binary);
         train_images = [train_images tmp];
     end
     clear tmp;
@@ -68,7 +70,7 @@ end
 
 %% Train (or load) network
 if resume && exist('data/oxford.mat', 'file')
-    disp 'Loading pretrained fine tuned network file...'
+    disp 'Loading fine tuned network file...'
     load data/oxford.mat;
 else
     [net,enc,dec,enc_init,dec_init] = train_dbn(train_images', num_hidden,...

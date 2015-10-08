@@ -121,63 +121,67 @@ resume = p.Results.Resume;
 if ~row_major, X = X'; end
 
 %% Start pretraining
-inputs = X;
-enc_init = [];
-dec_init = [];
-for i = 1:length(num_hidden)
-    numhid = num_hidden(i);
-    if i == length(num_hidden)
-        hidfun = output_function;
-        learnrate = learning_rate_final;
-    else
-        hidfun = hidden_function;
-        learnrate = learning_rate;
+if resume && exist('net', 'var')
+    if verbose, fprintf('Pretrained network already exists! Skipping pretraining...\n'); end
+else
+    inputs = X;
+    enc_init = [];
+    dec_init = [];
+    for i = 1:length(num_hidden)
+        numhid = num_hidden(i);
+        if i == length(num_hidden)
+            hidfun = output_function;
+            learnrate = learning_rate_final;
+        else
+            hidfun = hidden_function;
+            learnrate = learning_rate;
+        end
+
+        rbmfile = sprintf('rbm%i.mat', i); 
+        if resume && exist(rbmfile, 'file')
+            if verbose, fprintf('Loading RBM %i from file...\n', i); end
+            load(rbmfile);
+        else
+            [enci,deci] = train_rbm(inputs, numhid,...
+                'HiddenFunction', hidfun,...
+                'VisibleFunction', visible_function,...
+                'UnitFunction', unit_function,...
+                'MaxEpochs', max_epochs_init,...
+                'Batches', batches,...
+                'LearningRate', learnrate,...
+                'Momentum', momentum,...
+                'Regularizer', regularizer,...
+                'Sigma', sigma,...
+                'Verbose', verbose,...
+                'Visualize', (i == 1 && visualize));
+            if resume, save(rbmfile, 'enci', 'deci'); end
+        end
+        inputs = enci(inputs')';
+
+        if i == 1
+            enc_init = enci;
+            dec_init = deci;
+        else
+            enc_init = stack(enc_init, enci);
+            dec_init = stack(deci, dec_init);
+        end
     end
-    
-    rbmfile = sprintf('rbm%i.mat', i); 
-    if resume && exist(rbmfile, 'file')
-        if verbose, fprintf('Loading RBM %i from file...\n', i); end
-        load(rbmfile);
-    else
-        [enci,deci] = train_rbm(inputs, numhid,...
-            'HiddenFunction', hidfun,...
-            'VisibleFunction', visible_function,...
-            'UnitFunction', unit_function,...
-            'MaxEpochs', max_epochs_init,...
-            'Batches', batches,...
-            'LearningRate', learnrate,...
-            'Momentum', momentum,...
-            'Regularizer', regularizer,...
-            'Sigma', sigma,...
-            'Verbose', verbose,...
-            'Visualize', (i == 1 && visualize));
-        if resume, save(rbmfile, 'enci', 'deci'); end
-    end
-    inputs = enci(inputs')';
-    
-    if i == 1
-        enc_init = enci;
-        dec_init = deci;
-    else
-        enc_init = stack(enc_init, enci);
-        dec_init = stack(deci, dec_init);
-    end
+
+    %% Stack the RBMs
+    net_init = stack(enc_init, dec_init);
+    net_init.divideFcn = 'dividetrain';
+    net_init.performFcn = 'mse';
+    net_init.performParam.regularization = 0;
+    net_init.performParam.normalization = 'none';
+    net_init.plotFcns = {'plotperform'};
+    net_init.plotParams = {nnetParam}; % Dummy?
+    net_init.trainFcn = train_fcn;
+    net_init.trainParam.epochs = max_epochs;
+    net_init.trainParam.showWindow = visualize;
+    net_init.trainParam.showCommandLine = verbose;
+    net_init.trainParam.show = 1;
+    net = net_init;
 end
-
-
-%% Stack the RBMs
-net_init = stack(enc_init, dec_init);
-net_init.divideFcn = 'dividetrain';
-net_init.performFcn = 'mse';
-net_init.performParam.regularization = 0;
-net_init.performParam.normalization = 'none';
-net_init.plotFcns = {'plotperform'};
-net_init.plotParams = {nnetParam}; % Dummy?
-net_init.trainFcn = train_fcn;
-net_init.trainParam.epochs = max_epochs;
-net_init.trainParam.showWindow = visualize;
-net_init.trainParam.showCommandLine = verbose;
-net_init.trainParam.show = 1;
 
 %% Start fine tuning
 if verbose
@@ -188,44 +192,62 @@ end
 
 
 
-net = train(net_init, X', X');
+% net = train(net, X', X');
 
 
 
-% N = size(X,1);
-% net = net_init;
-% if isempty(batches)
-%     batches = {1:N};
-% else
-%     mulbatch = 10;
-%     tmp = cell(1, ceil(length(batches) / mulbatch));
-%     for i = 1:length(batches)
-%         idx = ceil(i / mulbatch);
-%         tmp{idx} = [tmp{idx} batches{i}];
-%     end
-%     batches = tmp;
-% end
-% 
-% iter = 1;
-% netfile = 'net.mat';
-% if resume && exist(netfile, 'file')
-%     load(netfile);
-%     if verbose, fprintf('Resuming fine tuning from batch %i...\n', iter); end
-% end
-% for i = iter:length(batches)
-%     fprintf('%.2f %%\n', 100*i/length(batches));
-%     
-%     % Initialize batch data
-%     Xb = X(batches{i},:);
-%     
-%     net = train(net, Xb', Xb');
-%     
-%     if resume
-%         iter = i;
-%         if verbose, fprintf('Saving fine tuned net for batch %i...\n', iter); end
-%         save(netfile, 'net', 'iter');
-%     end
-% end
+N = size(X,1);
+if isempty(batches)
+    batches = {1:N};
+else
+    mulbatch = 10;
+    tmp = cell(1, ceil(length(batches) / mulbatch));
+    for i = 1:length(batches)
+        idx = ceil(i / mulbatch);
+        tmp{idx} = [tmp{idx} batches{i}];
+    end
+    batches = tmp;
+end
+
+iter = 1;
+netfile = 'net.mat';
+
+if resume && exist(netfile, 'file')
+    load(netfile);
+    if verbose, fprintf('Resuming fine tuning from batch %i...\n', iter); end
+end
+
+for i = iter:max_epochs
+    if verbose, fprintf('%.2f %%\n', 100*i/length(batches)); end
+    chars = 0;
+    for j=1:length(batches)
+        if verbose
+            for k = 1:chars, fprintf('\b'); end
+            chars = fprintf('\tBatch %i/%i\n', j, length(batches));
+        end
+        
+        % Get batch data
+        Xb = X(batches{j},:);
+        
+        % Get current weights
+        w = getwb(net);
+        
+        % Run SCG
+        options = zeros(1,18);
+        options(1) = -1; % Display SCG progress?
+        options(14) = 3; % Maximum SCG iterations
+        [wmin, ~] = scg(@f, w', options, @df, net, Xb');
+        
+        % Update weights
+        setwb(net, wmin');
+    end % End loop over batches
+    
+    if resume
+        iter = i;
+        if verbose, fprintf('Saving fine tuned net for epoch %i...\n', iter); end
+        save(netfile, 'net', 'iter');
+    end
+end
 
     
 
@@ -258,4 +280,14 @@ if nargout > 4
     varargout{4} = dec_init;
 end    
 
+end
+
+function err = f(w, net, X)
+wnet = setwb(net, w);
+err = perform(wnet, X, wnet(X));
+end
+
+function grad = df(w, net, X)
+wnet = setwb(net, w);
+grad = -defaultderiv('dperf_dwb', wnet, X, X)';
 end
