@@ -12,6 +12,7 @@ method = p.Results.Method;
 num_clusters = p.Results.NumClusters;
 pca_variation = p.Results.PCAVariation;
 resize = p.Results.Resize;
+verbose = p.Results.Verbose;
 
 % Construct batches
 if strcmpi(method, 'Linear') || strcmpi(method, 'Random')
@@ -64,7 +65,7 @@ elseif strcmpi(method, 'Cluster') || strcmpi(method, 'ClusterPCA')
             num_components = num_components+1;
         end
         num_components = num_components-1;
-        if verbose, fprintf('\tUsing %i components!\', num_components); end
+        if verbose, fprintf('\tUsing %i components!\n', num_components); end
         coeff = coeff(:,1:num_components);
         % Project to subspace
         X = project_pca(X, coeff, mu);
