@@ -210,18 +210,19 @@ for epoch = 1:max_epochs
         
         % If image data
         if round(wh) == wh
+            % Show first neuron
+            imagesc(reshape(W(:,1), [wh wh]), 'parent', h2)
+            colorbar
+            title(h2, 'First unit')
+            axis equal
+            
             % Show first image
-            imshow(reshape(Xb(1,:)', [wh wh]), 'parent', h2)
-            title(h2, 'Image')
+            imshow(reshape(Xb(1,:)', [wh wh]), 'parent', h3)
+            title(h3, 'Image')
             
             % Show reconstruction
-            imshow(reshape(neg_output_activations(1,:)', [wh wh]), 'parent', h3)
-            title(h3, 'Reconstruction')
-
-            % Show first neuron
-            imagesc(reshape(W(:,1), [wh wh]), 'parent', h4)
-            colorbar
-            title(h4, 'First unit')
+            imshow(reshape(neg_output_activations(1,:)', [wh wh]), 'parent', h4)
+            title(h4, 'Reconstruction')
         end
         
         % Update figures

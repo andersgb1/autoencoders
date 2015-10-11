@@ -73,7 +73,7 @@ function [net,varargout] = train_dbn(X, num_hidden, varargin)
 %       'Visualize' (false): logical, set to true to show status plots
 %
 %       'Resume' (false): logical, if set to true, allow for resuming the
-%       pretraining. This means that during the 
+%       pretraining. This means that during the
 %
 %       See also TRAIN_RBM.
 
@@ -127,19 +127,19 @@ else
     inputs = X;
     enc_init = [];
     dec_init = [];
-    for i = 1:length(num_hidden)
-        numhid = num_hidden(i);
-        if i == length(num_hidden)
+    for epoch = 1:length(num_hidden)
+        numhid = num_hidden(epoch);
+        if epoch == length(num_hidden)
             hidfun = output_function;
             learnrate = learning_rate_final;
         else
             hidfun = hidden_function;
             learnrate = learning_rate;
         end
-
-        rbmfile = sprintf('rbm%i.mat', i); 
+        
+        rbmfile = sprintf('rbm%i.mat', epoch);
         if resume && exist(rbmfile, 'file')
-            if verbose, fprintf('Loading RBM %i from file...\n', i); end
+            if verbose, fprintf('Loading RBM %i from file...\n', epoch); end
             load(rbmfile);
         else
             [enci,deci] = train_rbm(inputs, numhid,...
@@ -153,12 +153,12 @@ else
                 'Regularizer', regularizer,...
                 'Sigma', sigma,...
                 'Verbose', verbose,...
-                'Visualize', (i == 1 && visualize));
+                'Visualize', (epoch == 1 && visualize));
             if resume, save(rbmfile, 'enci', 'deci'); end
         end
         inputs = enci(inputs')';
-
-        if i == 1
+        
+        if epoch == 1
             enc_init = enci;
             dec_init = deci;
         else
@@ -166,20 +166,20 @@ else
             dec_init = stack(deci, dec_init);
         end
     end
-
+    
     %% Stack the RBMs
     net_init = stack(enc_init, dec_init);
-    net_init.divideFcn = 'dividetrain';
+    %     net_init.divideFcn = 'dividetrain';
     net_init.performFcn = 'mse';
-    net_init.performParam.regularization = 0;
-    net_init.performParam.normalization = 'none';
-    net_init.plotFcns = {'plotperform'};
-    net_init.plotParams = {nnetParam}; % Dummy?
-    net_init.trainFcn = train_fcn;
-    net_init.trainParam.epochs = max_epochs;
-    net_init.trainParam.showWindow = visualize;
-    net_init.trainParam.showCommandLine = verbose;
-    net_init.trainParam.show = 1;
+    %     net_init.performParam.regularization = 0;
+    %     net_init.performParam.normalization = 'none';
+    %     net_init.plotFcns = {'plotperform'};
+    %     net_init.plotParams = {nnetParam}; % Dummy?
+    %     net_init.trainFcn = train_fcn;
+    %     net_init.trainParam.epochs = max_epochs;
+    %     net_init.trainParam.showWindow = visualize;
+    %     net_init.trainParam.showCommandLine = verbose;
+    %     net_init.trainParam.show = 1;
     net = net_init;
 end
 
@@ -195,36 +195,57 @@ end
 % net = train(net, X', X');
 
 
-
+%% Setup mini-batches (mulbatch times larger than the RBM mini-batches)
 N = size(X,1);
 if isempty(batches)
     batches = {1:N};
 else
-    mulbatch = 10;
+    mulbatch = 1;
     tmp = cell(1, ceil(length(batches) / mulbatch));
-    for i = 1:length(batches)
-        idx = ceil(i / mulbatch);
-        tmp{idx} = [tmp{idx} batches{i}];
+    for epoch = 1:length(batches)
+        idx = ceil(epoch / mulbatch);
+        tmp{idx} = [tmp{idx} batches{epoch}];
     end
     batches = tmp;
 end
 
-iter = 1;
+%% Resume
+iter_start = 1;
 netfile = 'net.mat';
-
 if resume && exist(netfile, 'file')
     load(netfile);
-    if verbose, fprintf('Resuming fine tuning from batch %i...\n', iter); end
+    iter_start = iter;
+    if verbose, fprintf('Resuming fine tuning from epoch %i...\n', iter_start); end
 end
 
-for i = iter:max_epochs
-    if verbose, fprintf('%.2f %%\n', 100*i/length(batches)); end
-    chars = 0;
+%% Prepare other stuff
+if visualize
+    figname = 'DBN';
+    if ~isempty(findobj('type', 'figure', 'name', figname)), close(figname); end
+    figure('Name', figname)
+    % If image data
+    wh = sqrt(size(X,2));
+    if wh == round(wh)
+        h1 = subplot(231);
+        h2 = subplot(232);
+        h3 = subplot(233);
+        h4 = subplot(234);
+        h5 = subplot(235);
+        h6 = subplot(236);
+    else
+        h1 = gca;
+    end
+end
+
+%% Start backpropagation
+perf = zeros(1, max_epochs);
+for epoch = iter_start:max_epochs
+    % Verbosity
+    if verbose, fprintf('Epoch %i/%i\n', epoch, max_epochs); end
+    perfbatch = zeros(1, length(batches));
     for j=1:length(batches)
-        if verbose
-            for k = 1:chars, fprintf('\b'); end
-            chars = fprintf('\tBatch %i/%i\n', j, length(batches));
-        end
+        % Verbosity
+        if verbose, chars = fprintf('\tBatch %i/%i\n', j, length(batches)); end
         
         % Get batch data
         Xb = X(batches{j},:);
@@ -236,27 +257,89 @@ for i = iter:max_epochs
         options = zeros(1,18);
         options(1) = -1; % Display SCG progress?
         options(14) = 3; % Maximum SCG iterations
-        [wmin, ~] = scg(@f, w', options, @df, net, Xb');
+        [wmin, ~, flog] = scg(@f, w', options, @df, net, Xb');
         
         % Update weights
-        setwb(net, wmin');
+        net = setwb(net, wmin');
+        
+        % Compute error of mini-batch
+        perfbatch(j) = flog(end); % MSE for current batch
+        
+        % Verbosity
+        if verbose
+            chars = chars + fprintf('\tReconstruction error of mini-batch (MSE): %f\n', perfbatch(j));
+        end
+        
+        % Visualization
+        if visualize
+            % h1 is shown below
+            
+            % Plot performance of current mini-batch
+            plot(h2, 1:j, perfbatch(1:j), '-k', 'LineWidth', 1.5)
+            xlim(h2, [0.9 j+1.1])
+            ylim(h2, [0 1.1*max(perfbatch)])
+            xlabel(h2, 'Mini-batch');
+            ylabel(h2, 'Performance (MSE)')
+            
+            % TODO: Show something in h3
+            
+            % If image data
+            if round(wh) == wh
+                % Show first neuron
+                W = net.IW{1}';
+                imagesc(reshape(W(:,1), [wh wh]), 'parent', h4)
+                colorbar
+                title(h4, 'First unit')
+                axis equal
+                
+                % Show first image
+                imshow(reshape(X(1,:)', [wh wh]), 'parent', h5)
+                title(h5, 'Image')
+                
+                % Show reconstruction
+                imshow(reshape(net(X(1,:)'), [wh wh]), 'parent', h6)
+                title(h6, 'Reconstruction')
+            end
+            
+            % Update figures
+            colormap gray
+            drawnow
+        end % End visualization
     end % End loop over batches
     
+    % Store performance
+    perf(epoch) = perform(net, X', net(X')); % MSE
+    
+    % Visualization
+    if visualize
+        % Plot performance of current epoch
+        plot(h1, iter_start:epoch, perf(iter_start:epoch), '-*k', 'LineWidth', 1.5)
+        xlim(h1, [iter_start-0.9 epoch+1.1])
+        ylim(h1, [0 1.1*max(perf)])
+        xlabel(h1, 'Epoch')
+        ylabel(h1, 'Performance (MSE)')
+            
+        % Update figures
+        colormap gray
+        drawnow
+    end
+    
+    % Save state
     if resume
-        iter = i;
-        if verbose, fprintf('Saving fine tuned net for epoch %i...\n', iter); end
+        if verbose, fprintf('Saving fine tuned net for epoch %i...\n', epoch); end
+        iter = epoch + 1; % Save instead the next epoch index
         save(netfile, 'net', 'iter');
     end
-end
+end % End epochs
 
-    
+
 
 %% Set outputs
 % Get encoder
 if nargout > 1
     enc = [];
-    for i = 1:length(num_hidden)
-        if i == 1, enc = get_layer(net, 1); else enc = stack(enc, get_layer(net, i)); end
+    for epoch = 1:length(num_hidden)
+        if epoch == 1, enc = get_layer(net, 1); else enc = stack(enc, get_layer(net, epoch)); end
     end
     varargout{1} = enc;
 end
@@ -264,8 +347,8 @@ end
 % Get decoder
 if nargout > 2
     dec = [];
-    for i = (length(num_hidden)+1):(2*length(num_hidden))
-        if i == (length(num_hidden)+1), dec = get_layer(net, (length(num_hidden)+1)); else dec = stack(dec, get_layer(net, i)); end
+    for epoch = (length(num_hidden)+1):(2*length(num_hidden))
+        if epoch == (length(num_hidden)+1), dec = get_layer(net, (length(num_hidden)+1)); else dec = stack(dec, get_layer(net, epoch)); end
     end
     varargout{2} = dec;
 end
@@ -278,7 +361,7 @@ end
 % Get initial decoder
 if nargout > 4
     varargout{4} = dec_init;
-end    
+end
 
 end
 
