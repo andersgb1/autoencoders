@@ -22,8 +22,8 @@ Niter_init = 50;
 Niter_fine = 100;
 
 % Learning parameters
-learning_rate = 0.01;
-learning_rate_final = 0.001;
+learning_rate = 0.1;
+learning_rate_final = 0.0001;
 momentum = 0.5;
 momentum_final = 0.9;
 

@@ -141,10 +141,10 @@ else
     dec_init = [];
     for i = 1:length(num_hidden)
         numhid = num_hidden(i);
-        hidfun = hidden_function;
         learnrate = learning_rate;
         if i == 1
             visfun = visible_function;
+            hidfun = hidden_function;
         elseif i == length(num_hidden)
             visfun = hidden_function;
             hidfun = output_function;
@@ -153,6 +153,7 @@ else
             hidfun = hidden_function;
         end
         
+        % TODO: Reduce larning rate for linear activation functions
         funs = {'purelin', 'poslin', 'satlin', 'satlins'};
         if any( [strcmpi(visfun, funs) strcmpi(hidfun,  funs)] )
             learnrate = learning_rate / 100;
