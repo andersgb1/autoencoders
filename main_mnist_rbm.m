@@ -6,18 +6,27 @@ close all;
 rng('default')
 
 % Set to true to enable re-use of training data and networks
-resume = false;
+resume = true;
 
 % Set to a positive value to reduce training set
 Nreduce = 0;
 
+% Layer sizes
+num_hidden = [1000 500 250 30];
+
 % Number of training iterations for the individual layers and for the final
 % fine tuning
 Niter_init = 50;
-Niter_fine = 200;
+Niter_fine = 50;
 
-% Layer sizes
-num_hidden = [1000 500 250 30];
+% Learning parameters
+learning_rate = 0.1;
+learning_rate_final = 0.001;
+momentum = 0.5;
+momentum_final = 0.9;
+
+learning_rate_mul = exp(log(learning_rate_final / learning_rate) / Niter_fine);
+momentum_inc = (momentum_final - momentum) / Niter_fine;
 
 %% Load data
 % Use the helper functions to load the training/test images and labels
@@ -38,9 +47,10 @@ Ntrain = length(train_labels);
 Ntest = length(test_labels);
 
 %% Create batches
-if ~(resume && exist('batches', 'var') > 0)
+if ~(resume && exist('batches_init', 'var') > 0 && exist('batches', 'var') > 0)
     disp 'Creating batches...'
-    batches = create_batches(train_images', round(Ntrain/100), 'Method', 'Linear', 'Verbose', true);
+    batches_init = create_batches(train_images', round(Ntrain/100), 'Method', 'Random');
+    batches = create_batches(train_images', round(Ntrain/1000), 'Method', 'Random');
 end
 
 %% Train (or load) network
@@ -49,17 +59,25 @@ if resume && exist('data/mnist.mat', 'file')
     load data/mnist.mat;
 else
     [net,enc,dec,enc_init,dec_init] = train_dbn(train_images', num_hidden,...
+        'VisibleFunction', 'purelin',...
+        'HiddenFunction', 'logsig',...
         'OutputFunction', 'purelin',...
         'MaxEpochsInit', Niter_init,...
         'MaxEpochs', Niter_fine,...
+        'BatchesInit', batches_init,...
         'Batches', batches,...
+        'LearningRate', learning_rate,...
+        'LearningRateMul', learning_rate_mul,...
+        'Momentum', 0.5,...
+        'MomentumInc', momentum_inc,...
+        'Sigma', 0.1,...
         'Verbose', true,...
         'Visualize', true,...
         'Resume', resume);
     save('data/mnist.mat', 'net', 'enc', 'dec', 'enc_init', 'dec_init');
 end
 
-% Network before fine tuning
+%% Network before fine tuning
 net_init = stack(enc_init, dec_init);
 
 %% Get a PCA for the training images
@@ -113,7 +131,7 @@ fprintf('    Fine-tuned NN error rate: %.2f %%\n', 100 * sum(output_labels_encfi
 %% Show some 1-layer unit weights
 figure('Name', '1-layer encoder weights before fine tuning')
 for i=1:100
-    subplot(10,10,i),imagesc(reshape(enc_init.IW{1}(i,:)',wh,wh))
+    subplot(10,10,i),imagesc(reshape(net_init.IW{1}(i,:)',wh,wh))
     axis off equal
 end
 colormap gray
