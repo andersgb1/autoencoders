@@ -11,11 +11,11 @@ function [enc,dec] = train_rbm(X, num_hidden, varargin)
 %
 %   Name value pair options (default value):
 %
-%       'HiddenFunction' ('logsig'): transfer function for the hidden
-%       units, can be 'logsig', 'tansig' or 'purelin'
-%
 %       'VisibleFunction' ('logsig'): transfer function for the visible
-%       units, can be 'logsig', 'tansig' or 'purelin'
+%       units, can be 'logsig', 'tansig' 'purelin', etc.
+%
+%       'HiddenFunction' ('logsig'): transfer function for the hidden
+%       units
 %
 %       'UnitFunction' ('default'): function determining the type of hidden
 %       units, can be 'binary', 'gaussian' or 'default'. When using
@@ -34,7 +34,7 @@ function [enc,dec] = train_rbm(X, num_hidden, varargin)
 %
 %       'Momentum' (0.9): momentum
 %
-%       'Regularizer' (0.0002): regularizer for the weight update
+%       'Regularizer' (0.0005): regularizer for the weight update
 %
 %       'Sigma' (0.1): standard deviation for the random Gaussian
 %       distribution used for initializing the weights
@@ -52,22 +52,22 @@ function [enc,dec] = train_rbm(X, num_hidden, varargin)
 % Set opts
 p = inputParser;
 p.CaseSensitive = false;
-p.addParameter('HiddenFunction', 'logsig', @ischar)
 p.addParameter('VisibleFunction', 'logsig', @ischar)
+p.addParameter('HiddenFunction', 'logsig', @ischar)
 p.addParameter('UnitFunction', 'default', @ischar)
 p.addParameter('MaxEpochs', 50, @isnumeric)
 p.addParameter('Batches', {}, @iscell)
 p.addParameter('LearningRate', 0.1, @isfloat)
 p.addParameter('Momentum', 0.9, @isfloat)
-p.addParameter('Regularizer', 0.0002, @isfloat)
+p.addParameter('Regularizer', 0.0005, @isfloat)
 p.addParameter('Sigma', 0.1, @isfloat)
 p.addParameter('RowMajor', true, @islogical)
 p.addParameter('Verbose', false, @islogical)
 p.addParameter('Visualize', false, @islogical)
 p.parse(varargin{:});
 % Get opts
-hidden_function = p.Results.HiddenFunction;
 visible_function = p.Results.VisibleFunction;
+hidden_function = p.Results.HiddenFunction;
 unit_function = p.Results.UnitFunction;
 max_epochs = p.Results.MaxEpochs;
 batches = p.Results.Batches;
@@ -81,10 +81,11 @@ visualize = p.Results.Visualize;
 % Transpose data to ensure row-major
 if ~row_major, X = X'; end
 % Get unit function
+funs = {'logsig', 'tanh', 'tansig'};
 if strcmpi(unit_function, 'default')
-    unit_function = 'binary';
-    if strcmpi(hidden_function, 'purelin')
-        unit_function = 'gaussian';
+    unit_function = 'gaussian';
+    if any( strcmpi(hidden_function, funs) )
+        unit_function = 'binary';
     end
 end
 % Check transfer/unit functions
@@ -146,7 +147,9 @@ for epoch = 1:max_epochs
         %% Verbosity
         if verbose
             for j = 1:chars, fprintf('\b'); end
-            chars = fprintf('Batch %i/%i of size %i', i, length(batches), length(batches{i}));
+            chars = fprintf('Batch %i/%i of size %i (lr: %.6f, mom: %.2f, reg: %.6f)',...
+                i, length(batches), length(batches{i}),...
+                learning_rate, momentum, regularizer);
             if i == length(batches), fprintf('\n'); end
         end
         
@@ -191,12 +194,12 @@ for epoch = 1:max_epochs
     end % End loop over batches
     
     % Store performance
-    perf(epoch) = err/numel(X);
+    perf(epoch) = err / numel(X);
     
     % Verbosity
     if verbose
-        fprintf('Error (SSE/MSE): %.0f/%.5f\n', err, perf(epoch));
-        fprintf('Computation time [s]: %.5f\n', toc);
+        fprintf('Error (MSE): %.6f\n', perf(epoch));
+        fprintf('Computation time [s]: %.2f\n', toc);
     end
     
     % Visualization
@@ -212,9 +215,9 @@ for epoch = 1:max_epochs
         if round(wh) == wh
             % Show first neuron
             imagesc(reshape(W(:,1), [wh wh]), 'parent', h2)
-            colorbar
+            colorbar(h2)
             title(h2, 'First unit')
-            axis equal
+            axis(h2, 'equal', 'off')
             
             % Show first image
             imshow(reshape(Xb(1,:)', [wh wh]), 'parent', h3)
