@@ -34,17 +34,18 @@ momentum_inc = (momentum_final - momentum) / Niter_fine;
 [train_images, train_labels, test_images, test_labels] = load_mnist('mnist');
 
 %% Reduce training set
+% Number of training/test cases
+Ntrain = length(train_labels);
+Ntest = length(test_labels);
+
 if Nreduce > 0
     idx = randperm(Ntrain);
     idx = idx(1:Nreduce);
     warning('Reducing training set to %d examples...', Nreduce);
     train_images = train_images(:,idx);
     train_labels = train_labels(idx);
+    Ntrain = length(train_labels);
 end
-
-% Number of training/test cases
-Ntrain = length(train_labels);
-Ntest = length(test_labels);
 
 %% Create batches
 if ~(resume && exist('batches_init', 'var') > 0 && exist('batches', 'var') > 0)
