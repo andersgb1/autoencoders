@@ -17,11 +17,11 @@ function [enc,dec] = train_rbm(X, num_hidden, varargin)
 %       'HiddenFunction' ('logsig'): transfer function for the hidden
 %       units
 %
-%       'UnitFunction' ('default'): function determining the type of hidden
-%       units, can be 'binary', 'gaussian' or 'default'. When using
+%       'SamplingFunction' ('default'): function determining the type of
+%       hidden units, can be 'binary', 'gaussian' or 'default'. When using
 %       'default', the type of units depends on the transfer function. For
-%       'purelin' the default is 'gaussian', otherwise it is set to
-%       'binary'.
+%       linear functions ('purelin', 'poslin', etc.) the default is
+%       'gaussian', otherwise it is set to 'binary'.
 %
 %       'MaxEpochs' (50): number of training iterations
 %
@@ -54,7 +54,7 @@ p = inputParser;
 p.CaseSensitive = false;
 p.addParameter('VisibleFunction', 'logsig', @ischar)
 p.addParameter('HiddenFunction', 'logsig', @ischar)
-p.addParameter('UnitFunction', 'default', @ischar)
+p.addParameter('SamplingFunction', 'default', @ischar)
 p.addParameter('MaxEpochs', 50, @isnumeric)
 p.addParameter('Batches', {}, @iscell)
 p.addParameter('LearningRate', 0.1, @isfloat)
@@ -68,7 +68,7 @@ p.parse(varargin{:});
 % Get opts
 visible_function = p.Results.VisibleFunction;
 hidden_function = p.Results.HiddenFunction;
-unit_function = p.Results.UnitFunction;
+sampling_function = p.Results.SamplingFunction;
 max_epochs = p.Results.MaxEpochs;
 batches = p.Results.Batches;
 regularizer = p.Results.Regularizer;
@@ -82,16 +82,16 @@ visualize = p.Results.Visualize;
 if ~row_major, X = X'; end
 % Get unit function
 funs = {'logsig', 'tanh', 'tansig'};
-if strcmpi(unit_function, 'default')
-    unit_function = 'gaussian';
+if strcmpi(sampling_function, 'default')
+    sampling_function = 'gaussian';
     if any( strcmpi(hidden_function, funs) )
-        unit_function = 'binary';
+        sampling_function = 'binary';
     end
 end
 % Check transfer/unit functions
 assert(exist(hidden_function) > 0, 'Unknown hidden transfer function: %s!\n', hidden_function);
 assert(exist(visible_function) > 0, 'Unknown visible transfer function: %s!\n', visible_function);
-assert(exist(unit_function) > 0, 'Unknown unit function: %s!\n', unit_function);
+assert(exist(sampling_function) > 0, 'Unknown sampling function: %s!\n', sampling_function);
 
 %% Initialize weights and biases and their increments
 [N, num_visible] = size(X);
@@ -127,7 +127,7 @@ if verbose
     fprintf('****************************************************************************\n');
     fprintf('Training a %i-%i RBM using %i training examples and %i batch(es)\n', num_visible, num_hidden, N, length(batches));
     fprintf('Using hidden and visible unit transfer functions ''%s'' and ''%s''\n', hidden_function, visible_function);
-    fprintf('Using unit function ''%s''\n', unit_function);
+    fprintf('Using sampling function ''%s''\n', sampling_function);
     fprintf('****************************************************************************\n');
 end
 
@@ -161,7 +161,7 @@ for epoch = 1:max_epochs
         % Forward pass through first layer
         pos_hidden_activations = feval(hidden_function, Xb * W + repmat(Bhid, batch_size, 1));
         % Apply unit function
-        pos_hidden_states = feval(unit_function, pos_hidden_activations, batch_size, num_hidden);
+        pos_hidden_states = feval(sampling_function, pos_hidden_activations, batch_size, num_hidden);
         % Get the positive gradient
         pos_gradient = Xb' * pos_hidden_activations;
         
@@ -200,6 +200,7 @@ for epoch = 1:max_epochs
     if verbose
         fprintf('Error (MSE): %.6f\n', perf(epoch));
         fprintf('Computation time [s]: %.2f\n', toc);
+        fprintf('******************************\n');
     end
     
     % Visualization
@@ -207,6 +208,7 @@ for epoch = 1:max_epochs
         % Plot performance
         plot(h1, 1:epoch, perf(1:epoch), '-*k', 'LineWidth', 1.5)
         xlim(h1, [0.9 epoch+1.1])
+        if epoch > 1, set(h1, 'xtick', [1 epoch]); end
         ylim(h1, [0 1.1*max(perf)])
         xlabel(h1, 'Epoch')
         ylabel(h1, 'Performance (MSE)')
@@ -220,12 +222,16 @@ for epoch = 1:max_epochs
             axis(h2, 'equal', 'off')
             
             % Show first image
-            imshow(reshape(Xb(1,:)', [wh wh]), 'parent', h3)
+            imagesc(reshape(Xb(1,:)', [wh wh]), 'parent', h3)
+            colorbar(h3)
             title(h3, 'Image')
+            axis(h3, 'equal', 'off')
             
             % Show reconstruction
-            imshow(reshape(neg_output_activations(1,:)', [wh wh]), 'parent', h4)
+            imagesc(reshape(neg_output_activations(1,:)', [wh wh]), 'parent', h4)
+            colorbar(h4)
             title(h4, 'Reconstruction')
+            axis(h4, 'equal', 'off')
         end
         
         % Update figures
@@ -243,7 +249,7 @@ end
 %% Unit functions
 % Binary
 function states = binary(activations, N, num_hidden)
-states = activations > rand(N, num_hidden);
+states = double(activations > rand(N, num_hidden));
 end
 
 % Gaussian
