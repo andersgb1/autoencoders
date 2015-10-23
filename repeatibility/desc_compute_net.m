@@ -12,13 +12,21 @@ idxx = {'1', '2', '3', '4', '5', '6'};
 detector='hesaff';
 thres = 0.025; % Only applied for VLFeat detectors
 
-% Loop over images
+%% Load network
+load data/oxford.mat
+enc = get_encoder(net);
+
+%% Load PCA
+load data/oxford_pca.mat
+
+%% Loop over images
 for idxc = idxx
     % Loops over cells return single cells
     idx = idxc{1};
 
     % Load image
-    assert(exist([root '/img' idx '.ppm'], 'file') > 0);
+    imgfile = [root '/img' idx '.ppm'];
+    assert(exist(imgfile, 'file') > 0, ['Image file ' imgfile ' does not exist!']);
     img = imread([root '/img' idx '.ppm']);
     imgs = im2single(rgb2gray(img));
 
@@ -57,13 +65,11 @@ for idxc = idxx
     assert(size(frames,2) == size(patches,2));
     N = size(frames,2);
     
-    %% NN section
-    if idx == '1'
-        % Get network
-        load data/oxford.mat
-    end
-    assert(exist('net', 'var') > 0 && exist('enc', 'var') > 0);
+    %% PCA section
+    % Project and transpose back to column-major (one feature per column)
+    pca_patches = project_pca(patches', c_pca, mu_pca)';
     
+    %% NN section    
     % If network input and patch sizes mismatch, rescale all patches
     if net.input.size ~= size(patches,1)
         if idx == '1'
@@ -81,17 +87,8 @@ for idxc = idxx
     end
     
     % Encode
+    patches = ( (patches' - repmat(mu, N, 1)) / sigma )';
     enc_patches = enc(patches);
-    
-    %% PCA section
-    % Get a PCA from first image
-    if idx == '1'
-        disp 'Computing PCA space from first image...';
-        [c,mu] = train_pca(patches', size(enc_patches, 1));
-    end
-    assert(exist('c', 'var') > 0 && exist('mu', 'var') > 0, 'PCA from first image non-existent!');
-    % Project and transpose back to column-major (one feature per column)
-    pca_patches = project_pca(patches', c, mu)';
     
     %% Output
     % Save features
