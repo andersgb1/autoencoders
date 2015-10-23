@@ -13,12 +13,12 @@ thres='500';
 
 % Descriptor
 % jla, sift, gloh, mom, koen, cf, sc, spin, pca, cc, none
-descriptors={'none'};
+descriptors={'sift'};
 
 % Loop over images
 for idx = idxx
     img = [root '/img' idx{1} '.ppm'];
-    assert(exist(img, 'file') > 0);
+    assert(exist(img, 'file') > 0, ['Image file ' img ' does not exist!']);
     fprintf('%s...\n', img);
     
     for i = 1:numel(descriptors)
