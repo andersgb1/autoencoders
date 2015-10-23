@@ -14,11 +14,11 @@ resume = true;
 Nreduce = 0;
 
 % Layer sizes
-num_hidden = [2000 1000 500 250 64];
+num_hidden = [2000 1000 750 500 128];
 
 % Number of training iterations for the individual layers and for the final
 % fine tuning
-Niter_init = 50;
+Niter_init = [150 50 50 50 50];
 Niter_fine = 100;
 
 % Learning parameters
@@ -35,7 +35,7 @@ momentum_inc = (momentum_final - momentum) / Niter_fine;
 root='repeatibility/graf';
 
 % Image(s) to consider
-idxx = {'1', '2', '3', '4', '5', '6'};
+idxx = {'1'};%, '2', '3', '4', '5', '6'};
 
 % Detector
 % Oxford detectors: har, harlap, heslap, haraff, hesaff
@@ -72,10 +72,11 @@ if Nreduce > 0
 end
 
 %% Create batches
-if ~(resume && exist('batches', 'var') > 0)
+if ~(resume && exist('batches_init', 'var') > 0 && exist('batches', 'var') > 0)
     disp 'Creating batches...'
 %     batches = create_batches(train_images', round(Ntrain/128), 'Method', 'ClusterPCA', 'Resize', 0.5, 'Verbose', true);
-    batches = create_batches(train_images', round(Ntrain/128), 'Method', 'Random');
+    batches_init = create_batches(train_images', round(Ntrain/128), 'Method', 'Random');
+    batches = batches_init;%create_batches(train_images', round(Ntrain/1000), 'Method', 'Random');
 end
 
 %% Train (or load) network
@@ -83,55 +84,56 @@ if resume && exist('data/oxford.mat', 'file')
     disp 'Loading fine tuned network file...'
     load data/oxford.mat;
 else
-    [net,enc,dec,enc_init,dec_init] = train_dbn(train_images', num_hidden,...
+    [net, net_init] = train_dbn(train_images', num_hidden,...
         'VisibleFunction', 'purelin',...
         'HiddenFunction', 'logsig',...
         'OutputFunction', 'purelin',...
         'MaxEpochsInit', Niter_init,...
         'MaxEpochs', Niter_fine,...
-        'BatchesInit', batches,...
+        'BatchesInit', batches_init,...
         'Batches', batches,...
         'LearningRate', learning_rate,...
         'LearningRateMul', learning_rate_mul,...
         'Momentum', 0.5,...
         'MomentumInc', momentum_inc,...
-        'Sigma', 0.01,...
         'Verbose', true,...
         'Visualize', true,...
         'Resume', resume);
-    save('data/oxford.mat', 'net', 'enc', 'dec', 'enc_init', 'dec_init');
+    mu = mean(train_images');
+    sigma = std(train_images(:));
+    save('data/oxford.mat', 'net', 'net_init', 'mu', 'sigma');
 end
-
-%% Network before fine tuning
-net_init = stack(enc_init, dec_init);
 
 %% Get a PCA for the training images
 disp 'Getting a PCA...'
-[c,mu] = train_pca(train_images', num_hidden(end));
-pca_train_feat = project_pca(train_images', c, mu);
+[c_pca,mu_pca] = train_pca(train_images', num_hidden(end));
+pca_train_feat = project_pca(train_images', c_pca, mu_pca);
+save('data/oxford_pca.mat', 'c_pca', 'mu_pca');
 
 %% Present reconstruction errors
 disp 'Presenting reconstruction results...'
 % Reconstructions of training data before/after fine tuning and using PCA
-pca_train_rec = reproject_pca(pca_train_feat, c, mu);
-fprintf('    PCA(%d) reconstruction error: %.4f\n', num_hidden(end), mse(pca_train_rec' - train_images));
-net_train_rec = net_init(train_images);
-fprintf('    NN reconstruction error: %.4f\n', mse(net_train_rec - train_images));
-net_fine_train_rec = net(train_images);
-fprintf('    Fine-tuned NN reconstruction error: %.4f\n', mse(net_fine_train_rec - train_images));
+pca_train_rec = reproject_pca(pca_train_feat, c_pca, mu_pca);
+fprintf('    PCA(%d) reconstruction error: %f\n', num_hidden(end), mse(pca_train_rec' - train_images));
+% TODO
+train_images_std = ( (train_images' - repmat(mu, Ntrain, 1)) / sigma )';
+net_train_rec = net_init(train_images_std);
+fprintf('    NN reconstruction error: %f\n', mse(net_train_rec*sigma+repmat(mu',1,Ntrain) - train_images));
+net_fine_train_rec = net(train_images_std);
+fprintf('    Fine-tuned NN reconstruction error: %f\n', mse(net_fine_train_rec*sigma+repmat(mu',1,Ntrain) - train_images));
 idx = randi(Ntrain);
 wh = sqrt(size(train_images,1)); % Image width/height
 figure('Name', 'Example')
 subplot(221),imagesc(reshape(train_images(:,idx), [wh wh])),title('Input image')
 subplot(222),imagesc(reshape(pca_train_rec(idx,:)', [wh wh])),title('PCA reconstruction')
-subplot(223),imagesc(reshape(net_train_rec(:,idx), [wh wh])),title('NN reconstruction')
-subplot(224),imagesc(reshape(net_fine_train_rec(:,idx), [wh wh])),title('Fine-tuned NN reconstruction')
+subplot(223),imagesc(reshape(net_train_rec(:,idx)*sigma+mu', [wh wh])),title('NN reconstruction')
+subplot(224),imagesc(reshape(net_fine_train_rec(:,idx)*sigma+mu', [wh wh])),title('Fine-tuned NN reconstruction')
 colormap gray
 
 %% Show some 1-layer unit weights
 figure('Name', '1-layer encoder weights before fine tuning')
 for i=1:100
-    subplot(10,10,i),imagesc(reshape(enc_init.IW{1}(i,:)',wh,wh))
+    subplot(10,10,i),imagesc(reshape(net_init.IW{1}(i,:)',wh,wh))
     axis off equal
 end
 colormap gray
