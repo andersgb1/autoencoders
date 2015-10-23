@@ -1,7 +1,7 @@
 clear;clc;
 
 % Image root path
-root='repeatibility/graf';
+root='graf';
 
 % Image(s) to consider
 idxx = {'1', '2', '3', '4', '5', '6'};
@@ -11,17 +11,19 @@ idxx = {'1', '2', '3', '4', '5', '6'};
 % VLFeat detectors: dog, hessian, hessianlaplace, harrislaplace, multiscalehessian, multiscaleharris
 % Our: custom
 detector='custom';
+% detector='hesaff';
 thres = 0.025; % Only applied for VLFeat detectors
 
 % Set custom frame parameters
 custom_frames = [];
-radii = 20:10:50; % Range of radii
-angle_inc = pi/4;
+radii = 20:5:50; % Range of radii
+angle_inc = pi/8;
 angles = angle_inc:angle_inc:2*pi; % Range of angles
 
 % Descriptor
 % sift, liop, patch, none
 desc = 'patch';
+% desc = 'liop';
 
 % Use this for patches
 write_desc_binary = true;
