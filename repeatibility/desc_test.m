@@ -30,6 +30,7 @@ precision_sim = zeros(20, numel(descs));
 recall_sim = zeros(20, numel(descs));
 precision_ratio = zeros(20, numel(descs));
 recall_ratio = zeros(20, numel(descs));
+corresp = zeros(1, numel(descs));
 
 % Start gathering descriptor matching results
 for i = 1:numel(descs)
@@ -48,8 +49,8 @@ for i = 1:numel(descs)
     assert(exist(img2, 'file') > 0);
     assert(exist(det1, 'file') > 0);
     assert(exist(det2, 'file') > 0);
-    assert(exist(desc1, 'file') > 0);
-    assert(exist(desc2, 'file') > 0);
+    assert(exist(desc1, 'file') > 0, ['File ' desc1 ' does not exist!']);
+    assert(exist(desc2, 'file') > 0, ['File ' desc2 ' does not exist!']);
 
     [v_overlap,v_repeatability,v_nb_of_corespondences,matching_score,nb_of_matches,twi] = repeatability(...
         desc1,...
@@ -70,25 +71,25 @@ for i = 1:numel(descs)
 
     % Get precision recall
     if strcmpi(mtype, 'nn')
-        corresp = v_nb_of_corespondences(5);
-        recall_nn(:,i) = correct_match_nn ./ corresp;
+        corresp(i) = v_nb_of_corespondences(5);
+        recall_nn(:,i) = correct_match_nn ./ corresp(i);
         precision_nn(:,i) = (total_match_nn - correct_match_nn) ./ total_match_nn;
     elseif strcmpi(mtype, 'sim')
-        corresp = sum(sum(twi));
-        recall_sim(:,i) = correct_match_sim ./ corresp;
+        corresp(i) = sum(sum(twi));
+        recall_sim(:,i) = correct_match_sim ./ corresp(i);
         precision_sim(:,i) = (total_match_sim - correct_match_sim) ./ total_match_sim;
     elseif  strcmpi(mtype, 'ratio')
-        corresp = v_nb_of_corespondences(5);
+        corresp(i) = v_nb_of_corespondences(5);
         % This has potentially fewer samples than 20
         Nratio = size(correct_match_rn, 2);
         if Nratio == 20
-            recall_ratio(:,i) = correct_match_rn ./ corresp;
+            recall_ratio(:,i) = correct_match_rn ./ corresp(i);
             precision_ratio(:,i) = (total_match_rn - correct_match_rn) ./ total_match_rn;
-        elseif Nratio < 20
-            recall_ratio(1:Nratio,i) = correct_match_rn ./ corresp;
-            precision_ratio(1:Nratio,i) = (total_match_rn - correct_match_rn) ./ total_match_rn;
-            recall_ratio(Nratio+1:end,:) = nan;
-            precision_ratio(Nratio+1:end,:) = nan;
+%         elseif Nratio < 20
+%             recall_ratio(1:Nratio,i) = correct_match_rn ./ corresp;
+%             precision_ratio(1:Nratio,i) = (total_match_rn - correct_match_rn) ./ total_match_rn;
+%             recall_ratio(Nratio+1:end,:) = nan;
+%             precision_ratio(Nratio+1:end,:) = nan;
         else
             error('Invalid number of ratio PR samples!');
         end
@@ -108,7 +109,7 @@ else
     error('No such matching strategy: %s!', mtype);
 end
 legend(descs, 'Interpreter', 'none')
-title([root ' ' idx1 '-' idx2 ' (' mtype ', ' num2str(corresp) ' correspondences)'])
+title([root ' ' idx1 '-' idx2 ' (' mtype ', ' num2str(corresp(end)) ' correspondences)'])
 xlabel('1-Precision');ylabel('Recall');
 xlim([0 1]);ylim([0 1]);
 ax=gca;ax.XTick=0:0.1:1;ax.YTick=0:0.1:1;
