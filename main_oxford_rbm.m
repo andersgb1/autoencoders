@@ -99,16 +99,21 @@ else
         'Verbose', true,...
         'Visualize', true,...
         'Resume', resume);
-    mu = mean(train_images');
+    mu = mean(train_images, 2)';
     sigma = std(train_images(:));
     save('data/oxford.mat', 'net', 'net_init', 'mu', 'sigma');
 end
 
 %% Get a PCA for the training images
-disp 'Getting a PCA...'
-[c_pca,mu_pca] = train_pca(train_images', num_hidden(end));
+pcafile = 'data/oxford_pca.mat';
+c_pca = 0;
+if exist(pcafile, 'file') > 0, load(pcafile); end
+if size(c_pca, 2) ~= num_hidden(end)
+    disp 'Getting a PCA...'
+    [c_pca,mu_pca] = train_pca(train_images', num_hidden(end));
+    save(pcafile, 'c_pca', 'mu_pca');
+end
 pca_train_feat = project_pca(train_images', c_pca, mu_pca);
-save('data/oxford_pca.mat', 'c_pca', 'mu_pca');
 
 %% Present reconstruction errors
 disp 'Presenting reconstruction results...'
@@ -133,14 +138,14 @@ colormap gray
 %% Show some 1-layer unit weights
 figure('Name', '1-layer encoder weights before fine tuning')
 for i=1:100
-    subplot(10,10,i),imagesc(reshape(net_init.IW{1}(i,:)',wh,wh))
+    subtightplot(10,10,i),imagesc(reshape(net_init.IW{1}(i,:)',wh,wh))
     axis off equal
 end
 colormap gray
 
 figure('Name', '1-layer encoder weights after fine tuning')
 for i=1:100
-    subplot(10,10,i),imagesc(reshape(net.IW{1}(i,:)',wh,wh))
+    subtightplot(10,10,i),imagesc(reshape(net.IW{1}(i,:)',wh,wh))
     axis off equal
 end
 colormap gray
