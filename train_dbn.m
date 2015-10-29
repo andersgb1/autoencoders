@@ -44,6 +44,8 @@ function [net,varargout] = train_dbn(X, num_hidden, varargin)
 %       to all layers, otherwise you can specify a vector giving a number
 %       for each layer.
 %
+%       'UseDropout' (false): set to true to use dropout.
+%
 %       'MaxEpochs' (200): number of training iterations for the fine
 %       tuning based on backpropagation
 %
@@ -57,7 +59,7 @@ function [net,varargout] = train_dbn(X, num_hidden, varargin)
 %
 %       'ValidationFraction' (0.1): set this to a value in [0,1[ to use a
 %       fraction of the training data as validation set during
-%       backpropagation. This also has the consequence that backpropagation
+%       training. This also has the consequence that training
 %       will be terminated as soon as the validation error stagnates.
 %
 %       'LearningRate' (0.1): learning rate for both pretraining and fine
@@ -72,7 +74,7 @@ function [net,varargout] = train_dbn(X, num_hidden, varargin)
 %
 %       'MomentumInc' (0): additive momentum increase
 %
-%       'Regularizer' (0.0005): regularizer for the weight update
+%       'Regularizer' (0.0001): regularizer for the weight update
 %
 %       'Sigma' (0.1): standard deviation for the random Gaussian
 %       distribution used for initializing the weights
@@ -98,6 +100,7 @@ p.addParameter('HiddenFunction', 'logsig', @ischar)
 p.addParameter('OutputFunction', 'purelin', @ischar)
 p.addParameter('SamplingFunction', 'default', @ischar)
 p.addParameter('MaxEpochsInit', 50, @isnumeric)
+p.addParameter('UseDropout', false, @islogical)
 p.addParameter('MaxEpochs', 200, @isnumeric)
 p.addParameter('BatchesInit', {}, @iscell)
 p.addParameter('Batches', {}, @iscell)
@@ -123,6 +126,7 @@ if length(max_epochs_init) == 1
     max_epochs_init = max_epochs_init * ones(1, length(num_hidden));
 end
 assert(length(max_epochs_init) == length(num_hidden), 'You must specify as many initial epochs as layers!')
+use_dropout = p.Results.UseDropout;
 max_epochs = p.Results.MaxEpochs;
 batches_init = p.Results.BatchesInit;
 batches = p.Results.Batches;
@@ -157,6 +161,13 @@ end
 % Set checkpoint
 netfile = 'net.mat';
 
+% Set dropout parameters
+if use_dropout
+    dropout_rate = 0.5;
+else
+    dropout_rate = 1;
+end
+
 %% Start pretraining
 if resume && exist(netfile, 'file')
     if verbose, fprintf('Pretrained network already exists! Skipping pretraining...\n'); end
@@ -168,13 +179,13 @@ else
         numhid = num_hidden(i);
         learnrate = learning_rate;
         sig = sigma;
-        if i == 1
+        if i == 1 % First RBM
             visfun = visible_function;
             hidfun = hidden_function;
         elseif i == length(num_hidden)
             visfun = hidden_function;
             hidfun = output_function;
-        else
+        else % Final RBM
             visfun = hidden_function;
             hidfun = hidden_function;
         end
@@ -183,8 +194,8 @@ else
         if any( [strcmpi(visfun, linact) strcmpi(hidfun,  linact)] )
             learnrate = learning_rate / 100;
             sig = sigma / 10;
-            warning(['Linear visible/hidden units for RBM %i selected!\n'...
-            '\tScaling learning rate: %.6f --> %.6f\n'...
+            warning(['Linear visible and/or hidden units for RBM %i selected!\n'...
+            '\tScaling learning rate: %.0e --> %.0e\n'...
             '\tScaling initial weight power: %.2f --> %.2f'],...
             i, learning_rate, learnrate, sigma, sig);
         end
@@ -199,6 +210,7 @@ else
                 'HiddenFunction', hidfun,...
                 'SamplingFunction', sampling_function,...
                 'MaxEpochs', max_epochs_init(i),...
+                'DropoutRate', dropout_rate,...
                 'Batches', batches_init,...
                 'LearningRate', learnrate,...
                 'Momentum', momentum,...
@@ -248,23 +260,25 @@ end
 
 %% Setup mini-batches
 N = size(X,1);
-if isempty(batches)
-    batches = {1:N};
-end
+if isempty(batches), batches = {1:N}; end
+
 Nbatch = length(batches);
 Nval = 0;
 if val_frac > 0
     Nval = round(val_frac * Nbatch);
-    Nbatch = Nbatch - Nval;
-    batches_val = batches{(Nbatch+1):(Nbatch+Nval)}; % Produces a vector
-    batches = batches(1:Nbatch); % Produces a cell array
-    Xval = X(batches_val,:);
-    perf_val = zeros(1, max_epochs);
+    if Nval > 0
+        Nbatch = Nbatch - Nval;
+        batches_val = batches{(Nbatch+1):(Nbatch+Nval)}; % Produces a vector
+        batches = batches(1:Nbatch); % Produces a cell array
+        Xval = X(batches_val,:);
+        perf_val = zeros(1, max_epochs);
+    end
 end
 
 %% Resume
 iter_start = 1;
 Winc = 0;
+% historical_grad = 1;
 perf = zeros(1, max_epochs);
 if resume && exist(netfile, 'file')
     load(netfile);
@@ -278,20 +292,20 @@ if resume && exist(netfile, 'file')
 end
 
 %% Prepare viz
-if iter_start < max_epochs && visualize
+if iter_start <= max_epochs && visualize
     figname = 'DBN';
     if ~isempty(findobj('type', 'figure', 'name', figname)), close(figname); end
     hfig = figure('Name', figname);
     % If image data
     wh = sqrt(size(X,2));
     if wh == round(wh)
-        h1 = subplot(221);
-        h2 = subplot(222);
-        h3 = subplot(223);
-        h4 = subplot(224);
+        h1 = subplot(2,2,1);
+        h2 = subplot(2,2,2);
+        h3 = subplot(2,2,3);
+        h4 = subplot(2,2,4);
     else
-        h1 = subplot(121);
-        h2 = subplot(122);
+        h1 = subtightplot(1,2,1);
+        h2 = subtightplot(1,2,2);
     end
 end
 
@@ -299,9 +313,13 @@ end
 if verbose
     if iter_start < max_epochs
         fprintf('****************************************************************************\n');
-        fprintf('Fine tuning the DBN for %i epochs\n', max_epochs);
+        fprintf('Fine tuning the DBN for %i epochs using %i training examples\n', max_epochs, N);
         if iter_start > 1, fprintf('Resuming from epoch %i\n', iter_start); end
-        if Nval > 0, fprintf('Using %i/%i batches for training/validation\n', Nbatch, Nval); end
+        if Nval > 0
+            fprintf('Using %i/%i batches for training/validation\n', Nbatch, Nval);
+        else
+            fprintf('Using %i training batches\n', Nbatch);
+        end
         fprintf('****************************************************************************\n');
     else
         fprintf('Fine tuned network already exists! Skipping fine tuning...\n');
@@ -310,31 +328,49 @@ end
 
 %% Start backpropagation
 % grad = zeros(1, max_epochs);
+% fudge_factor = 1e-6;
+lr_dec = 0; % Number of times we decreased the learning rates
 for epoch = iter_start:max_epochs
     % Verbosity
-    if verbose, fprintf('********** Epoch %i/%i (lr: %f, mom: %f) ********** \n', epoch, max_epochs, learning_rate, momentum); end
+    if verbose, fprintf('********** Epoch %i/%i (lr: %.0e, mom: %.2f, reg: %.0e) ********** \n', epoch, max_epochs, learning_rate, momentum, regularizer); end
+    
+    % Shuffle X
+    order = randperm(size(X,1));
+    X = X(order,:);
+    
+    % Loop over batches
     ssebatch = zeros(1, Nbatch);
-    szbatch = zeros(1, Nbatch);
+    batch_numel = zeros(1, Nbatch);
     for j=1:Nbatch
         % Verbosity
         if verbose, chars = fprintf('\tBatch %i/%i\n', j, Nbatch); end
         
         % Get batch data
         Xb = X(batches{j},:);
-        szbatch(j) = numel(Xb);
+        batch_numel(j) = numel(Xb);
         
         % Get current weights
         w = getwb(net);
         
         % Run minimization
+        % SCG
 %         options = zeros(1,18);
 %         options(1) = -1; % Display SCG progress?
 %         options(14) = 3; % Maximum SCG iterations
-%         [w, ~, flog] = scg(@f, w', options, @df, net, Xb');
-
+%         [w, ~, ~] = scg(@f, w', options, @df, net, Xb');
+        
+        % Momentum and learning rate
         gradj = df(w, net, Xb')';
         Winc = momentum * Winc - learning_rate * gradj - learning_rate * regularizer * w;
         w = w + Winc;
+        
+%         % AdaGrad
+%         gradj = df(w, net, Xb')';
+%         historical_grad = historical_grad + gradj.^2;
+%         adjusted_grad = gradj ./ (fudge_factor + sqrt(historical_grad));
+%         Winc = -adjusted_grad - regularizer * w;
+% %         Winc = -learning_rate * adjusted_grad - regularizer * w;
+%         w = w + Winc;
         
 %         % Compute error of mini-batch
 %         perfbatch(j) = flog(end); % MSE for current batch
@@ -349,7 +385,7 @@ for epoch = iter_start:max_epochs
         
         % Verbosity
         if verbose
-            chars = chars + fprintf('\tReconstruction error of mini-batch (MSE): %f\n', ssebatch(j)/szbatch(j));
+            chars = chars + fprintf('\tReconstruction error of mini-batch (MSE): %f\n', ssebatch(j)/batch_numel(j));
         end
         
         % Visualization
@@ -357,7 +393,7 @@ for epoch = iter_start:max_epochs
             % h1 is shown below
             
             % Plot performance of current mini-batch
-            plot(h2, 1:j, ssebatch(1:j)./szbatch(1:j), '-k')
+            plot(h2, 1:j, ssebatch(1:j)./batch_numel(1:j), '-k')
             xlim(h2, [0.5 j+0.5])
             if j > 1, set(h2, 'xtick', [1 j]); end
             ylim(h2, [0 inf])
@@ -366,14 +402,18 @@ for epoch = iter_start:max_epochs
             
             % If image data
             if round(wh) == wh
+                Xnet = net(X(1,:)');
+                immin = min(min(Xnet), min(X(1,:)));
+                immax = max(max(Xnet), max(X(1,:)));
+                
                 % Show first image
-                imagesc(reshape(X(1,:)', [wh wh]), 'parent', h3)
+                imshow(reshape(X(1,:)', [wh wh]), [immin immax], 'parent', h3)
                 colorbar(h3)
                 title(h3, 'Image')
                 axis(h3, 'off')
                 
                 % Show reconstruction
-                imagesc(reshape(net(X(1,:)'), [wh wh]), 'parent', h4)
+                imshow(reshape(Xnet, [wh wh]), [immin immax], 'parent', h4)
                 colorbar(h4)
                 title(h4, 'Reconstruction')
                 axis(h4, 'off')
@@ -390,7 +430,7 @@ for epoch = iter_start:max_epochs
     momentum = momentum + momentum_inc;
     
     % Store performance
-    perf(epoch) = sum(ssebatch) / sum(szbatch);
+    perf(epoch) = sum(ssebatch) / sum(batch_numel);
     if Nval > 0, perf_val(epoch) = mse(Xval' - net(Xval')); end
     
     % Verbosity
@@ -398,7 +438,7 @@ for epoch = iter_start:max_epochs
         if Nval > 0
             fprintf('Training/validation error: %f/%f\n', perf(epoch), perf_val(epoch));
         else
-            fprintf('Training error: %f/%f\n', perf(epoch));
+            fprintf('Training error: %f\n', perf(epoch));
         end
         fprintf('******************************\n');
     end
@@ -443,11 +483,21 @@ for epoch = iter_start:max_epochs
     % Termination
     if Nval > 0 && epoch > 1
         if perf_val(epoch) >= perf_val(epoch-1)
-            fprintf('Validation error has stagnated at %f! Stopping backpropagation...\n', perf_val(epoch))
-            break
+            fprintf('Validation error has stagnated at %f!', perf_val(epoch));
+            if lr_dec < 5
+                tmp = learning_rate / 10;
+                fprintf('\tScaling learning rate: %f --> %f...\n', learning_rate, tmp);
+                learning_rate = tmp;
+                lr_dec = lr_dec + 1;
+            else
+                fprintf('\tStopping backpropagation...\n');
+                break
+            end
         end
     end
 end % End epochs
+
+if visualize && exist('hfig') > 0, print(hfig, figname, '-dpdf'); end
 
 %% Set outputs
 if nargout > 1, varargout{1} = net_init; end
