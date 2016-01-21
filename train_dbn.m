@@ -484,7 +484,7 @@ for epoch = iter_start:max_epochs
     if Nval > 0 && epoch > 1
         if perf_val(epoch) >= perf_val(epoch-1)
             fprintf('Validation error has stagnated at %f!', perf_val(epoch));
-            if lr_dec < 5
+            if lr_dec < 3
                 tmp = learning_rate / 10;
                 fprintf('\tScaling learning rate: %f --> %f...\n', learning_rate, tmp);
                 learning_rate = tmp;
