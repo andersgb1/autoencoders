@@ -187,55 +187,53 @@ for epoch = 1:max_epochs
         batch_size = size(Xb,1);
         train_numel = train_numel + numel(Xb);
 
-
-
-%% Forward pass
-iw = [Wvis Bvis]; % Input weights + bias
-ahid = iw * [Xb' ; ones(1,batch_size)];
-hid = feval(visible_function, ahid); % Hidden
-dhid = feval(visible_function, 'dn', ahid); % Hidden derivatives
-
-hw = [Whid Bhid]; % Hidden weights + bias
-aout = hw * [hid ; ones(1,num_hidden)];
-out = feval(hidden_function, aout); % Output
-dout = feval(hidden_function, 'dn', aout); % Output derivatives
-
-%% Backward pass
-deltaout = dout .* (Xb' - out); % Output delta
-dhw = deltaout * hid'; % Hidden-output weight gradient
-dhb = sum(deltaout, 2); % Hidden-output bias gradient
-
-deltahid = dhid .* (hw(:,1:end-1)' * deltaout); % Hidden delta
-diw = deltahid * Xb; % Input-hidden weight gradient
-dib = sum(deltahid, 2); % Input-hidden bias gradient
-
-% grad = [dib ; diw(:) ; dhb ; dhw(:)] / batch_size;
-
-dhw = dhw / batch_size;
-dhb = dhb / batch_size;
-diw = diw / batch_size;
-dib = dib / batch_size;
-
-
+        %% Forward pass
+%         iw = [Wvis Bvis]; % Input weights + bias
+%         ahid = iw * [Xb' ; ones(1,batch_size)];
+        ahid = bsxfun(@plus, Wvis*Xb', Bvis);
+        hid = feval(visible_function, ahid); % Hidden
+        dhid = feval(visible_function, 'dn', ahid); % Hidden derivatives
+        
+%         hw = [Whid Bhid]; % Hidden weights + bias
+%         aout = hw * [hid ; ones(1,batch_size)];
+        aout = bsxfun(@plus, Whid*hid, Bhid);
+        out = feval(hidden_function, aout); % Output
+        dout = feval(hidden_function, 'dn', aout); % Output derivatives
+        
+        %% Backward pass - NOTE: computes negative gradient
+        deltaout = dout .* (Xb' - out); % Output delta (negative)
+        dhw = deltaout * hid'; % Hidden-output weight gradient
+        dhb = sum(deltaout, 2); % Hidden-output bias gradient
+        
+        deltahid = dhid .* (Whid' * deltaout); % Hidden delta
+        diw = deltahid * Xb; % Input-hidden weight gradient
+        dib = sum(deltahid, 2); % Input-hidden bias gradient
+        
+        %% Divide gradients by number of samples
+        dhw = dhw / batch_size;
+        dhb = dhb / batch_size;
+        diw = diw / batch_size;
+        dib = dib / batch_size;
+        
+        %% The tied weight case...
+        % tmp=dhw;
+        % dhw=dhw+diw';
+        % diw = diw+tmp';
 
         %% Update weights and biases
-%         Wvisinc = momentum * Wvisinc + learning_rate * ( diw - regularizer * Wvis );
-%         Wvis = Wvis + Wvisinc;
-        Wvis = Wvis + learning_rate * diw;
+        Wvisinc = momentum * Wvisinc + learning_rate * ( diw - regularizer * Wvis );
+        Wvis = Wvis + Wvisinc;
         
         % Bias update for visible units
-%         Bvisinc = momentum * Bvisinc + learning_rate * dib;
-%         Bvis = Bvis + Bvisinc;
-        Bvis = Bvis + learning_rate * dib;
+        Bvisinc = momentum * Bvisinc + learning_rate * dib;
+        Bvis = Bvis + Bvisinc;
         
-%         Whidinc = momentum * Whidinc + learning_rate * ( dhw - regularizer * Whid );
-%         Whid = Whid + Whidinc;
-        Whid = Whid + learning_rate * dhw;
+        Whidinc = momentum * Whidinc + learning_rate * ( dhw - regularizer * Whid );
+        Whid = Whid + Whidinc;
         
         % Bias update for hidden units
-%         Bhidinc = momentum * Bhidinc + learning_rate * dhb;
-%         Bhid = Bhid + Bhidinc;
-        Bhid = Bhid + learning_rate * dhb;
+        Bhidinc = momentum * Bhidinc + learning_rate * dhb;
+        Bhid = Bhid + Bhidinc;
 
         %% Compute error
         err = err + sse(Xb' - out);
@@ -252,7 +250,7 @@ dib = dib / batch_size;
         hid = feval(visible_function, ahid); % Hidden
         
         hw = [Whid Bhid]; % Hidden weights + bias
-        aout = hw * [hid ; ones(1,num_hidden)];
+        aout = hw * [hid ; ones(1,Nvalcases)];
         valout = feval(hidden_function, aout); % Output
         
         perf_val(epoch) = mse(Xval' - valout);
