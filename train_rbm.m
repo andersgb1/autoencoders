@@ -103,9 +103,9 @@ if strcmpi(sampling_function, 'default')
     end
 end
 % Check transfer/unit functions
-assert(exist(hidden_function) > 0, 'Unknown hidden transfer function: %s!\n', hidden_function);
-assert(exist(visible_function) > 0, 'Unknown visible transfer function: %s!\n', visible_function);
-assert(exist(sampling_function) > 0, 'Unknown sampling function: %s!\n', sampling_function);
+assert(any(strcmpi(hidden_function, funs)), 'Unknown hidden transfer function: %s!\n', hidden_function);
+assert(any(strcmpi(visible_function, funs)) > 0, 'Unknown visible transfer function: %s!\n', visible_function);
+assert(any(strcmpi(sampling_function, {'gaussian', 'binary'})) > 0, 'Unknown sampling function: %s!\n', sampling_function);
 
 %% Initialize dimensions, weights and biases and their increments
 [N, num_visible] = size(X);
@@ -131,10 +131,6 @@ if visualize
     hfig = figure('Name', figname);
     % If image data
     if width > 0
-%         h1 = subtightplot(2,2,1);
-%         h2 = subtightplot(2,2,2);
-%         h3 = subtightplot(2,2,3);
-%         h4 = subtightplot(2,2,4);
         h1 = subplot(131);
         h3 = subplot(132);
         h4 = subplot(133);
@@ -281,12 +277,6 @@ for epoch = 1:max_epochs
         
         % If image data
         if width > 0
-%             % Show first neuron
-%             imagesc(reshape(W(:,1), [height width]), 'parent', h2)
-%             colorbar(h2)
-%             title(h2, 'First unit')
-%             axis(h2, 'equal', 'off')
-            
             % Show first image
             imagesc(reshape(Xb(1,:)', [height width]), 'parent', h3)
             colorbar(h3)
