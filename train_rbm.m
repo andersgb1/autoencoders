@@ -25,10 +25,6 @@ function [enc,dec] = train_rbm(X, num_hidden, varargin)
 %
 %       'MaxEpochs' (50): number of training iterations
 %
-%       'DropoutRate' (1): use dropout on the hidden units. A dropout rate
-%       close to 1 means almost never dropping out a hidden unit, whereas a
-%       dropout rate close to 0 encourages very high sparsity.
-%
 %       'Batches' (empty cell): mini-batches considered in each epoch. If
 %       you want to split the training data into mini-batches during each
 %       epoch, this argument should contain a cell array, each element
@@ -51,6 +47,10 @@ function [enc,dec] = train_rbm(X, num_hidden, varargin)
 %       'RowMajor' (true): logical specifying whether the observations in X
 %       are placed in rows or columns
 %
+%       'Width' (0): if set to a positive integer value, this indicates
+%       that all observations in X have a 2D structure and can be
+%       visualized as an image with this width
+%
 %       'Verbose' (false): logical, set to true to print status messages
 %
 %       'Visualize' (false): logical, set to true to show status plots
@@ -65,7 +65,6 @@ p.addParameter('VisibleFunction', 'logsig', @ischar)
 p.addParameter('HiddenFunction', 'logsig', @ischar)
 p.addParameter('SamplingFunction', 'default', @ischar)
 p.addParameter('MaxEpochs', 50, @isnumeric)
-p.addParameter('DropoutRate', 1, @isnumeric)
 p.addParameter('Batches', {}, @iscell)
 p.addParameter('ValidationFraction', 0.1, @isnumeric)
 p.addParameter('LearningRate', 0.1, @isfloat)
@@ -73,6 +72,7 @@ p.addParameter('Momentum', 0.9, @isfloat)
 p.addParameter('Regularizer', 0.0005, @isfloat)
 p.addParameter('Sigma', 0.1, @isfloat)
 p.addParameter('RowMajor', true, @islogical)
+p.addParameter('Width', 0, @isnumeric)
 p.addParameter('Verbose', false, @islogical)
 p.addParameter('Visualize', false, @islogical)
 p.parse(varargin{:});
@@ -81,8 +81,6 @@ visible_function = p.Results.VisibleFunction;
 hidden_function = p.Results.HiddenFunction;
 sampling_function = p.Results.SamplingFunction;
 max_epochs = p.Results.MaxEpochs;
-dropout_rate = p.Results.DropoutRate;
-assert(dropout_rate > 0 && dropout_rate <= 1, 'Dropout rate must be in ]0,1]!');
 batches = p.Results.Batches;
 val_frac = p.Results.ValidationFraction;
 assert(val_frac >= 0 && val_frac < 1, 'Validation fraction must be a number in [0,1[!')
@@ -91,6 +89,7 @@ sigma = p.Results.Sigma;
 learning_rate = p.Results.LearningRate;
 momentum = p.Results.Momentum;
 row_major = p.Results.RowMajor;
+width = p.Results.Width;
 verbose = p.Results.Verbose;
 visualize = p.Results.Visualize;
 % Transpose data to ensure row-major
@@ -108,9 +107,16 @@ assert(exist(hidden_function) > 0, 'Unknown hidden transfer function: %s!\n', hi
 assert(exist(visible_function) > 0, 'Unknown visible transfer function: %s!\n', visible_function);
 assert(exist(sampling_function) > 0, 'Unknown sampling function: %s!\n', sampling_function);
 
-%% Initialize weights and biases and their increments
+%% Initialize dimensions, weights and biases and their increments
 [N, num_visible] = size(X);
-wh = sqrt(num_visible);
+if width > 0 % Image data
+    assert(round(width) == width, 'Specified width is non-integer!')
+    height = num_visible / width;
+    assert(round(height) == height, 'Invalid width!')
+elseif round(sqrt(num_visible)) == sqrt(num_visible) % Quadratic dimension, can also be shown
+    width = sqrt(num_visible);
+    height = width;
+end
 W = sigma * randn(num_visible, num_hidden);
 Bvis = zeros(1, num_visible);
 Bhid = zeros(1, num_hidden);
@@ -124,11 +130,14 @@ if visualize
     if ~isempty(findobj('type', 'figure', 'name', figname)), close(figname); end
     hfig = figure('Name', figname);
     % If image data
-    if wh == round(wh)
-        h1 = subtightplot(2,2,1);
-        h2 = subtightplot(2,2,2);
-        h3 = subtightplot(2,2,3);
-        h4 = subtightplot(2,2,4);
+    if width > 0
+%         h1 = subtightplot(2,2,1);
+%         h2 = subtightplot(2,2,2);
+%         h3 = subtightplot(2,2,3);
+%         h4 = subtightplot(2,2,4);
+        h1 = subplot(131);
+        h3 = subplot(132);
+        h4 = subplot(133);
     else
         h1 = gca;
     end
@@ -161,7 +170,6 @@ if verbose
         end
     fprintf('Using hidden and visible unit transfer functions ''%s'' and ''%s''\n', hidden_function, visible_function);
     fprintf('Using sampling function ''%s''\n', sampling_function);
-    if dropout_rate < 1, fprintf('Using a dropout rate of %.2f\n', dropout_rate); end
     fprintf('****************************************************************************\n');
 end
 
@@ -198,17 +206,12 @@ for epoch = 1:max_epochs
         batch_size = size(Xb,1);
         train_numel = train_numel + numel(Xb);
         
-        %% Prepare for dropout
-        if dropout_rate < 1, dropout_mask = double(rand(batch_size, num_hidden) <= dropout_rate); end
-        
         %% Positive phase
         % Forward pass through first layer
         pos_hidden_activations = feval(hidden_function, Xb * W + repmat(Bhid, batch_size, 1));
-        if dropout_rate < 1, pos_hidden_activations = pos_hidden_activations .* dropout_mask; end
         
         % Apply sampling function
         pos_hidden_states = feval(sampling_function, pos_hidden_activations, batch_size, num_hidden);
-        if dropout_rate < 1, pos_hidden_states = pos_hidden_states .* dropout_mask; end
         % Get the positive gradient
         pos_gradient = Xb' * pos_hidden_activations;
         
@@ -277,28 +280,32 @@ for epoch = 1:max_epochs
         ylabel(h1, 'Performance (MSE)')
         
         % If image data
-        if round(wh) == wh
-            % Show first neuron
-            imagesc(reshape(W(:,1), [wh wh]), 'parent', h2)
-            colorbar(h2)
-            title(h2, 'First unit')
-            axis(h2, 'equal', 'off')
+        if width > 0
+%             % Show first neuron
+%             imagesc(reshape(W(:,1), [height width]), 'parent', h2)
+%             colorbar(h2)
+%             title(h2, 'First unit')
+%             axis(h2, 'equal', 'off')
             
             % Show first image
-            imagesc(reshape(Xb(1,:)', [wh wh]), 'parent', h3)
+            imagesc(reshape(Xb(1,:)', [height width]), 'parent', h3)
             colorbar(h3)
-            xlabel(h3, 'Image')
+            title(h3, 'Image')
             axis(h3, 'equal', 'off')
             
             % Show reconstruction
-            imagesc(reshape(neg_output_activations(1,:)', [wh wh]), 'parent', h4)
+            imagesc(reshape(neg_output_activations(1,:)', [height width]), 'parent', h4)
             colorbar(h4)
-            xlabel(h4, 'Reconstruction')
+            title(h4, 'Reconstruction')
             axis(h4, 'equal', 'off')
+            
+            colormap gray
+            
+            % Show the strongest neurons
+            plot_neurons(W, width);
         end
         
         % Update figures
-        colormap gray
         drawnow
     end % End visualization
     
@@ -326,8 +333,8 @@ end % End loop over epochs
 if visualize, print(hfig, figname, '-dpdf'); end
 
 %% Create output
-enc = create_layer(num_visible, num_hidden, hidden_function, W' * dropout_rate, Bhid', 'traincgp', 'Name', 'Encoder');
-dec = create_layer(num_hidden, num_visible, visible_function, W * dropout_rate, Bvis', 'traincgp', 'Name', 'Decoder');
+enc = create_layer(num_visible, num_hidden, hidden_function, W', Bhid', 'traincgp', 'Name', 'Encoder');
+dec = create_layer(num_hidden, num_visible, visible_function, W, Bvis', 'traincgp', 'Name', 'Decoder');
 
 end
 
