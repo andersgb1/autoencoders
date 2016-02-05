@@ -44,14 +44,18 @@ switch loss
 end
 % Backpropagate
 for i = ffnet.numLayers:-1:1
-    if i == ffnet.numLayers
-        delta = do{i} .* delta;
-    else
+    if i < ffnet.numLayers % Input or hidden layer
         delta = do{i} .* (ffnet.LW{i+1, i}' * delta);
+    else % Output layer
+        if strcmp(ffnet.layers{i}.transferFcn, 'softmax') % Softmax outputs cells
+            for j = 1:length(do{i}), delta(:,j) = do{i}{j} * delta(:,j); end
+        else
+            delta = do{i} .* delta;
+        end
     end
-    if i == 1
+    if i == 1 % Input layer
         dw = delta * input' / size(target,2);
-    else
+    else % Hidden or output layer
         dw = delta * o{i-1}' / size(target,2);
     end
     db = sum(delta, 2) / size(target,2);
