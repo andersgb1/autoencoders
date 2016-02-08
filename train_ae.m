@@ -11,13 +11,20 @@ function [enc,dec] = train_ae(X, num_hidden, varargin)
 %
 %   Name value pair options (default value):
 %
-%       'VisibleFunction' ('logsig'): transfer function for the visible
-%       units, can be 'logsig', 'tansig' 'purelin', 'poslin' and 'satlin'
+%       'EncoderFunction' ('logsig'): transfer function applied to the
+%       visible units, can be 'logsig', 'tansig' 'purelin', 'poslin' and
+%       'satlin'
 %
-%       'HiddenFunction' ('logsig'): transfer function for the hidden
-%       units
+%       'DecoderFunction' ('logsig'): transfer function applied to the
+%       hidden units
+%
+%       'TiedWeights' (true): use tied (symmetric) weights for the
+%       encoder/decoder
 %
 %       'MaxEpochs' (50): number of training iterations
+%
+%       'Loss' ('mse'): loss function for the output, can be
+%       'crossentropy', 'log' (equal to cross-entropy), 'mse', 'mae'
 %
 %       'Batches' (empty cell): mini-batches considered in each epoch. If
 %       you want to split the training data into mini-batches during each
@@ -28,6 +35,10 @@ function [enc,dec] = train_ae(X, num_hidden, varargin)
 %       fraction of the training data as validation set during
 %       training. This also has the consequence that training
 %       will be terminated as soon as the validation error stagnates.
+%
+%       'MaskingNoise' (0): turn the autoencoder into a denoising
+%       autoencoder by introducing masking noise (randomly setting inputs
+%       to zero) in the interval [0,1[
 %
 %       'LearningRate' (0.1): learning rate
 %
@@ -49,17 +60,23 @@ function [enc,dec] = train_ae(X, num_hidden, varargin)
 %
 %       'Visualize' (false): logical, set to true to show status plots
 %
+%       'UseGPU' (false): set to true to use GPU if available - note that
+%       this demotes all datatypes to single precision floats
+%
 %       See also TRAIN_RBM.
 
 %% Parse inputs
 % Set opts
 p = inputParser;
 p.CaseSensitive = false;
-p.addParameter('VisibleFunction', 'logsig', @ischar)
-p.addParameter('HiddenFunction', 'logsig', @ischar)
+p.addParameter('EncoderFunction', 'logsig', @ischar)
+p.addParameter('DecoderFunction', 'logsig', @ischar)
+p.addParameter('TiedWeights', true, @islogical)
 p.addParameter('MaxEpochs', 50, @isnumeric)
+p.addParameter('Loss', 'mse', @ischar)
 p.addParameter('Batches', {}, @iscell)
 p.addParameter('ValidationFraction', 0.1, @isnumeric)
+p.addParameter('MaskingNoise', 0, @isnumeric)
 p.addParameter('LearningRate', 0.1, @isfloat)
 p.addParameter('Momentum', 0.9, @isfloat)
 p.addParameter('Regularizer', 0.0005, @isfloat)
@@ -68,28 +85,45 @@ p.addParameter('RowMajor', true, @islogical)
 p.addParameter('Width', 0, @isnumeric)
 p.addParameter('Verbose', false, @islogical)
 p.addParameter('Visualize', false, @islogical)
+p.addParameter('UseGPU', false, @islogical)
 p.parse(varargin{:});
 % Get opts
-visible_function = p.Results.VisibleFunction;
-hidden_function = p.Results.HiddenFunction;
+encoder_function = p.Results.EncoderFunction;
+decoder_function = p.Results.DecoderFunction;
+
+tied_weights = p.Results.TiedWeights;
+
 max_epochs = p.Results.MaxEpochs;
+
+loss = p.Results.Loss;
+        
 batches = p.Results.Batches;
 val_frac = p.Results.ValidationFraction;
 assert(val_frac >= 0 && val_frac < 1, 'Validation fraction must be a number in [0,1[!')
+
+mask_noise = p.Results.MaskingNoise;
+assert(mask_noise >= 0 && mask_noise < 1, 'Masking noise level must be a number in [0,1[!')
+
 regularizer = p.Results.Regularizer;
+
 sigma = p.Results.Sigma;
+
 learning_rate = p.Results.LearningRate;
 momentum = p.Results.Momentum;
+
 row_major = p.Results.RowMajor;
 width = p.Results.Width;
+
 verbose = p.Results.Verbose;
 visualize = p.Results.Visualize;
+
+use_gpu = p.Results.UseGPU;
 % Transpose data to ensure row-major
 if ~row_major, X = X'; end
 % Get unit function
 funs = {'logsig', 'tansig', 'purelin', 'poslin', 'satlin'};
-assert(any(strcmpi(hidden_function, funs)), 'Unknown hidden transfer function: %s!\n', hidden_function);
-assert(any(strcmpi(visible_function, funs)) > 0, 'Unknown visible transfer function: %s!\n', visible_function);
+assert(any(strcmpi(encoder_function, funs)) > 0, 'Unknown encoder function: %s!\n', encoder_function);
+assert(any(strcmpi(decoder_function, funs)), 'Unknown decoder function: %s!\n', decoder_function);
 
 %% Initialize dimensions, weights and biases and their increments
 [N, num_visible] = size(X);
@@ -102,7 +136,11 @@ elseif round(sqrt(num_visible)) == sqrt(num_visible) % Quadratic dimension, can 
     height = width;
 end
 Wvis = sigma * randn(num_hidden, num_visible);
-Whid = sigma * randn(num_visible, num_hidden);
+if tied_weights
+    Whid = Wvis';
+else
+    Whid = sigma * randn(num_visible, num_hidden);
+end
 Bvis = zeros(num_hidden, 1);
 Bhid = zeros(num_visible, 1);
 Wvisinc = zeros(size(Wvis));
@@ -112,7 +150,11 @@ Bhidinc = zeros(size(Bhid));
 
 %% Prepare other stuff
 if visualize
-    figname = sprintf('AE %i-%i', num_visible, num_hidden);
+    if mask_noise > 0
+        figname = sprintf('DAE %i-%i', num_visible, num_hidden);
+    else
+        figname = sprintf('AE %i-%i', num_visible, num_hidden);
+    end
     if ~isempty(findobj('type', 'figure', 'name', figname)), close(figname); end
     hfig = figure('Name', figname);
     % If image data
@@ -140,22 +182,49 @@ if val_frac > 0
         perf_val = zeros(1, max_epochs);
     end
 end
+perf = zeros(1,max_epochs);
+
+%% Place data on GPU if possible
+has_gpu = (use_gpu && gpuDeviceCount);
+if has_gpu
+    Xcpu = X;
+    X = gpuArray(single(X));
+    Wvis = gpuArray(single(Wvis));
+    Whid = gpuArray(single(Whid));
+    Bvis = gpuArray(single(Bvis));
+    Bhid = gpuArray(single(Bhid));
+    Wvisinc = gpuArray(single(Wvisinc));
+    Whidinc = gpuArray(single(Whidinc));
+    Bvisinc = gpuArray(single(Bvisinc));
+    Bhidinc = gpuArray(single(Bhidinc));
+    perf = gpuArray(single(perf));
+    if Nval > 0
+        Xval = gpuArray(single(Xval));
+        perf_val = gpuArray(single(perf_val));
+    end
+end
 
 %% Verbosity
 if verbose
     fprintf('****************************************************************************\n');
-    fprintf('Training a %i-%i AE using %i training examples\n', num_visible, num_hidden, N);
-        if Nval > 0
-            fprintf('Using %i/%i batches for training/validation\n', Nbatch, Nval);
-        else
-            fprintf('Using %i training batches\n', Nbatch);
-        end
-    fprintf('Using hidden and visible unit transfer functions ''%s'' and ''%s''\n', hidden_function, visible_function);
+    if mask_noise > 0
+        fprintf('Training a %i-%i DAE using %i training examples and a masking noise level of %.2f\n', num_visible, num_hidden, N, mask_noise);
+    else
+        fprintf('Training a %i-%i AE using %i training examples\n', num_visible, num_hidden, N);
+    end
+    if Nval > 0
+        fprintf('Using %i/%i batches for training/validation\n', Nbatch, Nval);
+    else
+        fprintf('Using %i training batches\n', Nbatch);
+    end
+    fprintf('Using encoder and decoder functions ''%s'' and ''%s''\n', encoder_function, decoder_function);
+    fprintf('Using loss function: %s\n', loss);
+    if tied_weights, fprintf('Using tied weights\n'), end
+    if has_gpu, fprintf('Using GPU\n'), end
     fprintf('****************************************************************************\n');
 end
 
 %% Train
-perf = zeros(1,max_epochs);
 lr_dec = 0; % Number of times we decreased the learning rates
 for epoch = 1:max_epochs
     % Verbosity
@@ -169,7 +238,7 @@ for epoch = 1:max_epochs
     X = X(order,:);
     
     % Loop over batches
-    err = 0;
+%     err = 0;
     train_numel = 0;
     chars = 0;
     for i = 1:Nbatch
@@ -186,28 +255,44 @@ for epoch = 1:max_epochs
         Xb = X(batches{i},:);
         batch_size = size(Xb,1);
         train_numel = train_numel + numel(Xb);
+        
+        %% The DAE case
+        if mask_noise > 0
+            mask = (rand(size(Xb)) > mask_noise);
+            in = Xb .* mask;
+        else
+            in = Xb;
+        end
 
         %% Forward pass
-%         iw = [Wvis Bvis]; % Input weights + bias
-%         ahid = iw * [Xb' ; ones(1,batch_size)];
-        ahid = bsxfun(@plus, Wvis*Xb', Bvis);
-        hid = feval(visible_function, ahid); % Hidden
-        dhid = feval(visible_function, 'dn', ahid); % Hidden derivatives
-        
-%         hw = [Whid Bhid]; % Hidden weights + bias
-%         aout = hw * [hid ; ones(1,batch_size)];
+        ahid = bsxfun(@plus, Wvis*in', Bvis);
+        hid = feval(encoder_function, ahid); % Hidden
+        dhid = feval(encoder_function, 'dn', ahid); % Hidden derivatives
         aout = bsxfun(@plus, Whid*hid, Bhid);
-        out = feval(hidden_function, aout); % Output
-        dout = feval(hidden_function, 'dn', aout); % Output derivatives
+        out = feval(decoder_function, aout); % Output
+        dout = feval(decoder_function, 'dn', aout); % Output derivatives
         
         %% Backward pass - NOTE: computes negative gradient
-        deltaout = dout .* (Xb' - out); % Output delta (negative)
+        % Output error (negative)
+%         derr = dfloss(Xb', out);
+        [~,derr] = backprop_loss(Xb', out, loss);
+        deltaout = dout .* derr; % Output delta
         dhw = deltaout * hid'; % Hidden-output weight gradient
         dhb = sum(deltaout, 2); % Hidden-output bias gradient
         
         deltahid = dhid .* (Whid' * deltaout); % Hidden delta
         diw = deltahid * Xb; % Input-hidden weight gradient
         dib = sum(deltahid, 2); % Input-hidden bias gradient
+        
+%         if sum(isnan(diw(:))) > 0
+%             dlmwrite('Xb.txt',Xb')
+%             dlmwrite('out.txt',out)
+%             dlmwrite('derr.txt',derr)
+%             edit Xb.txt
+%             edit out.txt
+%             edit derr.txt
+%             error
+%         end
         
         %% Divide gradients by number of samples
         dhw = dhw / batch_size;
@@ -216,9 +301,9 @@ for epoch = 1:max_epochs
         dib = dib / batch_size;
         
         %% The tied weight case...
-        % tmp=dhw;
-        % dhw=dhw+diw';
-        % diw = diw+tmp';
+        tmp=dhw;
+        dhw=dhw+diw';
+        diw = diw+tmp';
 
         %% Update weights and biases
         Wvisinc = momentum * Wvisinc + learning_rate * ( diw - regularizer * Wvis );
@@ -235,33 +320,49 @@ for epoch = 1:max_epochs
         Bhidinc = momentum * Bhidinc + learning_rate * dhb;
         Bhid = Bhid + Bhidinc;
 
-        %% Compute error
-        err = err + sse(Xb' - out);
+        %% Compute training error
+%         err = err + sse(Xb' - out);
+%         err = err + floss(Xb', out);
+        
     end % End loop over batches
     
     % Store performance
-    perf(epoch) = err / train_numel;
+%     perf(epoch) = err / train_numel;
+%     perf(epoch) = err;
+    
+    % Compute training error (must be done on CPU due to memory limits)
+    if has_gpu
+        in = Xcpu;
+    else
+        in = X;
+    end
+    ahid = bsxfun(@plus, gather(Wvis)*in', gather(Bvis));
+    hid = feval(encoder_function, ahid); % Hidden
+    aout = bsxfun(@plus, gather(Whid)*hid, gather(Bhid));
+    out = feval(decoder_function, aout); % Output
+    
+%     perf(epoch) = floss(in', out);
+    perf(epoch) = backprop_loss(in', out, loss);
+    
+    % Verbosity
+    if verbose, fprintf('Training error: %f\n', perf(epoch)); end
+    
+    % Compute validation error
     if Nval > 0
-        Nvalcases = size(Xval, 1);
-        
         % Pass the validation set through the autoencoder
-        iw = [Wvis Bvis]; % Input weights + bias
-        ahid = iw * [Xval' ; ones(1,Nvalcases)];
-        hid = feval(visible_function, ahid); % Hidden
+        ahid = bsxfun(@plus, Wvis*Xval', Bvis);
+        hid = feval(encoder_function, ahid); % Hidden
+        aout = bsxfun(@plus, Whid*hid, Bhid);
+        valout = feval(decoder_function, aout); % Output
         
-        hw = [Whid Bhid]; % Hidden weights + bias
-        aout = hw * [hid ; ones(1,Nvalcases)];
-        valout = feval(hidden_function, aout); % Output
-        
-        perf_val(epoch) = mse(Xval' - valout);
+%         perf_val(epoch) = floss(Xval', valout);
+        perf_val(epoch) = backprop_loss(Xval', valout, loss);
     end
     
     % Verbosity
     if verbose
         if Nval > 0
-            fprintf('Training/validation error: %f/%f\n', perf(epoch), perf_val(epoch));
-        else
-            fprintf('Training error: %\n', perf(epoch));
+            fprintf('Validation error: %f\n', perf_val(epoch));
         end
         fprintf('Computation time [s]: %.2f\n', toc);
         fprintf('******************************\n');
@@ -279,14 +380,16 @@ for epoch = 1:max_epochs
         end
         xlim(h1, [0.9 epoch+1.1])
         if epoch > 1, set(h1, 'xtick', [1 epoch]); end
-        ylim(h1, [0 1.1*max(perf)])
+        ymax = gather( max(perf) );
+        if Nval > 0, ymax = max(ymax, gather(max(perf_val))); end
+        ylim(h1, [0 1.1*ymax+eps])
         xlabel(h1, 'Epoch')
-        ylabel(h1, 'Performance (MSE)')
+        ylabel(h1, sprintf('Performance (%s)', loss))
         
         % If image data
         if width > 0
             % Show first image
-            imagesc(reshape(Xb(1,:)', [height width]), 'parent', h3)
+            imagesc(reshape(in(1,:)', [height width]), 'parent', h3)
             colorbar(h3)
             title(h3, 'Image')
             axis(h3, 'equal', 'off')
@@ -299,8 +402,9 @@ for epoch = 1:max_epochs
             
             colormap gray
             
-            % Show the strongest neurons
-            plot_neurons(Wvis', width);
+            % Show the strongest/weakest neurons
+            plot_neurons(Wvis', width, 5, 'Strongest', true);
+            plot_neurons(Wvis', width, 5, 'Strongest', false);
         end
         
         % Update figures
@@ -331,7 +435,15 @@ end % End loop over epochs
 if visualize, print(hfig, figname, '-dpdf'); end
 
 %% Create output
-enc = create_layer(num_visible, num_hidden, hidden_function, Wvis', Bhid', 'traincgp', 'Name', 'Encoder');
-dec = create_layer(num_hidden, num_visible, visible_function, Wvis, Bvis', 'traincgp', 'Name', 'Decoder');
+enc = create_layer(num_visible, num_hidden, encoder_function, double(gather(Wvis)), double(gather(Bvis)), 'trainscg', 'Name', 'Encoder');
+dec = create_layer(num_hidden, num_visible, decoder_function, double(gather(Whid)), double(gather(Bhid)), 'trainscg', 'Name', 'Decoder');
+
+%% Clean up
+if has_gpu
+    clear X Wvis Whid Bvis Bhid Wvisinc Whidinc Bvisinc Bhidinc perf;
+    if Nval > 0
+        clear Xval perf_val;
+    end
+end
 
 end

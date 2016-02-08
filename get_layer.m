@@ -43,8 +43,12 @@ layer.b{1} = net.b{idx};
 % Set a training function
 layer.trainFcn = net.trainFcn;
 
+% Set a performance function
+layer.performFcn = net.performFcn;
+
 % Set the input
 layerStruct = struct(layer);
+
 % TODO
 if idx == 1
     networkStruct = struct(net);

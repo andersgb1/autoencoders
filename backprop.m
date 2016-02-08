@@ -45,6 +45,7 @@ end
 % Backpropagate
 for i = ffnet.numLayers:-1:1
     if i < ffnet.numLayers % Input or hidden layer
+        if strcmp(ffnet.layers{i}.transferFcn, 'softmax'), error('Softmax transfer function only supported for the output layer!'); end
         delta = do{i} .* (ffnet.LW{i+1, i}' * delta);
     else % Output layer
         if strcmp(ffnet.layers{i}.transferFcn, 'softmax') % Softmax outputs cells
