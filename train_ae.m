@@ -274,25 +274,14 @@ for epoch = 1:max_epochs
         
         %% Backward pass - NOTE: computes negative gradient
         % Output error (negative)
-%         derr = dfloss(Xb', out);
         [~,derr] = backprop_loss(Xb', out, loss);
         deltaout = dout .* derr; % Output delta
         dhw = deltaout * hid'; % Hidden-output weight gradient
         dhb = sum(deltaout, 2); % Hidden-output bias gradient
         
         deltahid = dhid .* (Whid' * deltaout); % Hidden delta
-        diw = deltahid * Xb; % Input-hidden weight gradient
+        diw = deltahid * in; % Input-hidden weight gradient
         dib = sum(deltahid, 2); % Input-hidden bias gradient
-        
-%         if sum(isnan(diw(:))) > 0
-%             dlmwrite('Xb.txt',Xb')
-%             dlmwrite('out.txt',out)
-%             dlmwrite('derr.txt',derr)
-%             edit Xb.txt
-%             edit out.txt
-%             edit derr.txt
-%             error
-%         end
         
         %% Divide gradients by number of samples
         dhw = dhw / batch_size;
