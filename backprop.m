@@ -36,7 +36,7 @@ switch loss
     case 'mae'
         delta = 0.5 * sign(target - o{end});
     case {'crossentropy', 'log'}
-        delta = 0.5 * target ./ o{end};
+        delta = 0.5 * target ./ (o{end} + eps);
     case 'binary_crossentropy'
         delta = 0.5 * (target - o{end}) ./ (o{end} .* (1 - o{end}) + eps);
     otherwise
