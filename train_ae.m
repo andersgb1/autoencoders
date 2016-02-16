@@ -40,6 +40,10 @@ function [enc,dec] = train_ae(X, num_hidden, varargin)
 %       autoencoder by introducing masking noise (randomly setting inputs
 %       to zero) in the interval [0,1[
 %
+%       'GaussianNoise' (0): turn the autoencoder into a denoising
+%       autoencoder by introducing Gaussian noise with a standard deviation
+%       as provided
+%
 %       'LearningRate' (0.1): learning rate
 %
 %       'Momentum' (0.9): momentum
@@ -77,6 +81,7 @@ p.addParameter('Loss', 'mse', @ischar)
 p.addParameter('Batches', {}, @iscell)
 p.addParameter('ValidationFraction', 0.1, @isnumeric)
 p.addParameter('MaskingNoise', 0, @isnumeric)
+p.addParameter('GaussianNoise', 0, @isnumeric)
 p.addParameter('LearningRate', 0.1, @isfloat)
 p.addParameter('Momentum', 0.9, @isfloat)
 p.addParameter('Regularizer', 0.0005, @isfloat)
@@ -103,6 +108,8 @@ assert(val_frac >= 0 && val_frac < 1, 'Validation fraction must be a number in [
 
 mask_noise = p.Results.MaskingNoise;
 assert(mask_noise >= 0 && mask_noise < 1, 'Masking noise level must be a number in [0,1[!')
+
+gauss_noise = p.Results.GaussianNoise;
 
 regularizer = p.Results.Regularizer;
 
@@ -150,7 +157,7 @@ Bhidinc = zeros(size(Bhid));
 
 %% Prepare other stuff
 if visualize
-    if mask_noise > 0
+    if mask_noise > 0 || gauss_noise > 0
         figname = sprintf('DAE %i-%i', num_visible, num_hidden);
     else
         figname = sprintf('AE %i-%i', num_visible, num_hidden);
@@ -207,8 +214,8 @@ end
 %% Verbosity
 if verbose
     fprintf('****************************************************************************\n');
-    if mask_noise > 0
-        fprintf('Training a %i-%i DAE using %i training examples and a masking noise level of %.2f\n', num_visible, num_hidden, N, mask_noise);
+    if mask_noise > 0 || gauss_noise > 0
+        fprintf('Training a %i-%i DAE using %i training examples and masking/Gaussian noise level of %.2f/%.2f\n', num_visible, num_hidden, N, mask_noise, gauss_noise);
     else
         fprintf('Training a %i-%i AE using %i training examples\n', num_visible, num_hidden, N);
     end
@@ -263,6 +270,10 @@ for epoch = 1:max_epochs
         else
             in = Xb;
         end
+        
+        if gauss_noise > 0
+            in = in + gauss_noise * randn(size(in));
+        end
 
         %% Forward pass
         ahid = bsxfun(@plus, Wvis*in', Bvis);
@@ -308,16 +319,7 @@ for epoch = 1:max_epochs
         % Bias update for hidden units
         Bhidinc = momentum * Bhidinc + learning_rate * dhb;
         Bhid = Bhid + Bhidinc;
-
-        %% Compute training error
-%         err = err + sse(Xb' - out);
-%         err = err + floss(Xb', out);
-        
     end % End loop over batches
-    
-    % Store performance
-%     perf(epoch) = err / train_numel;
-%     perf(epoch) = err;
     
     % Compute training error (must be done on CPU due to memory limits)
     if has_gpu
@@ -330,7 +332,6 @@ for epoch = 1:max_epochs
     aout = bsxfun(@plus, gather(Whid)*hid, gather(Bhid));
     out = feval(decoder_function, aout); % Output
     
-%     perf(epoch) = floss(in', out);
     perf(epoch) = backprop_loss(in', out, loss);
     
     % Verbosity
@@ -343,8 +344,6 @@ for epoch = 1:max_epochs
         hid = feval(encoder_function, ahid); % Hidden
         aout = bsxfun(@plus, Whid*hid, Bhid);
         valout = feval(decoder_function, aout); % Output
-        
-%         perf_val(epoch) = floss(Xval', valout);
         perf_val(epoch) = backprop_loss(Xval', valout, loss);
     end
     
@@ -400,11 +399,6 @@ for epoch = 1:max_epochs
         drawnow
     end % End visualization
     
-%     % Termination
-%     if epoch > 1 && perf(epoch) >= perf(epoch-1)
-%         fprintf('Training error has stagnated at %f! Stopping pretraining...\n', perf(epoch))
-%         break;
-%     end
     if Nval > 0 && epoch > 1
         if perf_val(epoch) >= perf_val(epoch-1)
             fprintf('Validation error has stagnated at %f!', perf_val(epoch));

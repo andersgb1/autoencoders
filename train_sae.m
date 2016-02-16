@@ -65,6 +65,10 @@ function [net,varargout] = train_sae(X, num_hidden, varargin)
 %       autoencoders by introducing masking noise (randomly setting inputs
 %       to zero) in the interval [0,1[ - this only applies to pretraining
 %
+%       'GaussianNoise' (0): turn the autoencoder into a denoising
+%       autoencoder by introducing Gaussian noise with a standard deviation
+%       as provided
+%
 %       'LearningRate' (0.1): learning rate for both pretraining and fine
 %       tuning. If learning rate decay is non-zero this indicates the start
 %       learning rate for fine tuning. NOTE: For pretraining, the learning
@@ -117,6 +121,7 @@ p.addParameter('BatchesInit', {}, @iscell)
 p.addParameter('Batches', {}, @iscell)
 p.addParameter('ValidationFraction', 0.1, @isnumeric)
 p.addParameter('MaskingNoise', 0, @isnumeric)
+p.addParameter('GaussianNoise', 0, @isnumeric)
 p.addParameter('LearningRate', 0.05, @isfloat)
 p.addParameter('LearningRateMul', 1, @isfloat)
 p.addParameter('Momentum', 0.9, @isfloat)
@@ -148,6 +153,7 @@ val_frac = p.Results.ValidationFraction;
 assert(val_frac >= 0 && val_frac < 1, 'Validation fraction must be a number in [0,1[!')
 mask_noise = p.Results.MaskingNoise;
 assert(mask_noise >= 0 && mask_noise < 1, 'Masking noise level must be a number in [0,1[!')
+gauss_noise = p.Results.GaussianNoise;
 regularizer = p.Results.Regularizer;
 sigma = p.Results.Sigma;
 learning_rate = p.Results.LearningRate;
@@ -207,8 +213,8 @@ else
         sig = sigma;
         w = 0;
         if i == 1 % First AE
-            encfun = input_function;
-            decfun = hidden_function;
+            encfun = hidden_function; % Sigmoid encoder
+            decfun = input_function; % Affine decoder
             w = width;
         elseif i == length(num_hidden) % Final AE
             encfun = hidden_function;
@@ -242,6 +248,7 @@ else
                 'Batches', batches_init,...
                 'ValidationFraction', val_frac,...
                 'MaskingNoise', mask_noise,...
+                'GaussianNoise', gauss_noise,...
                 'LearningRate', learnrate,...
                 'Momentum', momentum,...
                 'Regularizer', regularizer,...

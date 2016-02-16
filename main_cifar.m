@@ -14,18 +14,18 @@ resume = true;
 Nreduce = 0;
 
 % Set to true to apply data augmentation
-augment = true;
+augment = false;
 
 % Layer sizes
-num_hidden = [4000 2000 1000 500 100];
+num_hidden = 4000;
 
 % Number of training iterations for the individual layers and for the final
 % fine tuning
-Niter_init = 1000*ones(1,length(num_hidden));
+Niter_init = 50*ones(1,length(num_hidden));
 Niter_fine = 1000;
 
 % Learning parameters
-learning_rate = 0.01;
+learning_rate = 0.1;
 % learning_rate_final = 0.0001;
 momentum = 0.9;
 momentum_final = 0.9;
@@ -140,56 +140,57 @@ if resume && exist('data/cifar.mat', 'file')
     disp 'Loading fine tuned network file...'
     load data/cifar.mat;
 else
-    [net, net_init] = train_dbn(train_images', num_hidden,...
-        'VisibleFunction', 'purelin',...
+    [net, net_init] = train_sae(train_images', num_hidden,...
+        'InputFunction', 'purelin',...
         'HiddenFunction', 'logsig',...
         'OutputFunction', 'purelin',...
+        'TiedWeights', true,...
         'MaxEpochsInit', Niter_init,...
         'MaxEpochs', Niter_fine,...
+        'Loss', 'mse',...
         'BatchesInit', batches_init,...
         'Batches', batches,...
+        'ValidationFraction', 0,...
+        'GaussianNoise', 0.5,...
         'LearningRate', learning_rate,...
         'LearningRateMul', learning_rate_mul,...
         'Momentum', momentum,...
-        'MomentumInc', momentum_inc,...
+        'Regularizer', 0,...
+        'Sigma', 0.1,...
+        'Width', 41,...
         'Verbose', true,...
         'Visualize', true,...
-        'Resume', resume);
-    mu = mean(train_images, 2)';
-    sigma = std(train_images(:));
-    save('data/cifar.mat', 'net', 'net_init', 'mu', 'sigma');
+        'UseGPU', true,...
+        'Resume', true);
+    save('data/cifar.mat', 'net', 'net_init');
 end
 
-%% Get a PCA for the training images
-pcafile = 'data/cifar_pca.mat';
-c_pca = 0;
-if exist(pcafile, 'file') > 0, load(pcafile); end
-if size(c_pca, 2) ~= num_hidden(end)
+wh = sqrt(size(train_images,1)); % Image width/height
+if num_hidden(end) < size(train_images,1)
+    %% Get a PCA for the training images
     disp 'Getting a PCA...'
     [c_pca,mu_pca] = train_pca(train_images', num_hidden(end));
-    save(pcafile, 'c_pca', 'mu_pca');
-end
-pca_train_feat = project_pca(train_images', c_pca, mu_pca);
+    pca_train_feat = project_pca(train_images', c_pca, mu_pca);
 
-%% Present reconstruction errors
-disp 'Presenting reconstruction results...'
-% Reconstructions of training data before/after fine tuning and using PCA
-pca_train_rec = reproject_pca(pca_train_feat, c_pca, mu_pca);
-fprintf('    PCA(%d) reconstruction error: %f\n', num_hidden(end), mse(pca_train_rec' - train_images));
-% TODO
-train_images_std = ( (train_images' - repmat(mu, Ntrain, 1)) / sigma )';
-net_train_rec = net_init(train_images_std);
-fprintf('    NN reconstruction error: %f\n', mse(net_train_rec*sigma+repmat(mu',1,Ntrain) - train_images));
-net_fine_train_rec = net(train_images_std);
-fprintf('    Fine-tuned NN reconstruction error: %f\n', mse(net_fine_train_rec*sigma+repmat(mu',1,Ntrain) - train_images));
-idx = randi(Ntrain);
-wh = sqrt(size(train_images,1)); % Image width/height
-figure('Name', 'Example')
-subplot(221),imagesc(reshape(train_images(:,idx), [wh wh])),title('Input image')
-subplot(222),imagesc(reshape(pca_train_rec(idx,:)', [wh wh])),title('PCA reconstruction')
-subplot(223),imagesc(reshape(net_train_rec(:,idx)*sigma+mu', [wh wh])),title('NN reconstruction')
-subplot(224),imagesc(reshape(net_fine_train_rec(:,idx)*sigma+mu', [wh wh])),title('Fine-tuned NN reconstruction')
-colormap gray
+    %% Present reconstruction errors
+    disp 'Presenting reconstruction results...'
+    % Reconstructions of training data before/after fine tuning and using PCA
+    pca_train_rec = reproject_pca(pca_train_feat, c_pca, mu_pca);
+    fprintf('    PCA(%d) reconstruction error: %f\n', num_hidden(end), mse(pca_train_rec' - train_images));
+    % TODO
+    train_images_std = ( (train_images' - repmat(mu, Ntrain, 1)) / sigma )';
+    net_train_rec = net_init(train_images_std);
+    fprintf('    NN reconstruction error: %f\n', mse(net_train_rec*sigma+repmat(mu',1,Ntrain) - train_images));
+    net_fine_train_rec = net(train_images_std);
+    fprintf('    Fine-tuned NN reconstruction error: %f\n', mse(net_fine_train_rec*sigma+repmat(mu',1,Ntrain) - train_images));
+    idx = randi(Ntrain);
+    figure('Name', 'Example')
+    subplot(221),imagesc(reshape(train_images(:,idx), [wh wh])),title('Input image')
+    subplot(222),imagesc(reshape(pca_train_rec(idx,:)', [wh wh])),title('PCA reconstruction')
+    subplot(223),imagesc(reshape(net_train_rec(:,idx)*sigma+mu', [wh wh])),title('NN reconstruction')
+    subplot(224),imagesc(reshape(net_fine_train_rec(:,idx)*sigma+mu', [wh wh])),title('Fine-tuned NN reconstruction')
+    colormap gray
+end
 
 %% Show some 1-layer unit weights
 figure('Name', '1-layer encoder weights before fine tuning')
