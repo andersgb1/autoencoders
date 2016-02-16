@@ -44,23 +44,29 @@ switch loss
 end
 % Backpropagate
 for i = ffnet.numLayers:-1:1
-    if i < ffnet.numLayers % Input or hidden layer
-        if strcmp(ffnet.layers{i}.transferFcn, 'softmax'), error('Softmax transfer function only supported for the output layer!'); end
-        delta = do{i} .* (ffnet.LW{i+1, i}' * delta);
-    else % Output layer
+    % Delta
+    if i == ffnet.numLayers % Output layer
         if strcmp(ffnet.layers{i}.transferFcn, 'softmax') % Softmax outputs cells
             for j = 1:length(do{i}), delta(:,j) = do{i}{j} * delta(:,j); end
         else
             delta = do{i} .* delta;
         end
+    else % Input or hidden layer
+        if strcmp(ffnet.layers{i}.transferFcn, 'softmax'), error('Softmax transfer function only supported for the output layer!'); end
+        delta = do{i} .* (ffnet.LW{i+1, i}' * delta);
     end
-    if i == 1 % Input layer
-        dw = delta * input' / size(target,2);
-    else % Hidden or output layer
+    
+    % Weight update
+    if i > 1 % Hidden or output layer
         dw = delta * o{i-1}' / size(target,2);
+    else % Input layer
+        dw = delta * input' / size(target,2);
     end
+    
+    % Bias update
     db = sum(delta, 2) / size(target,2);
     
+    % Collect updates
     numwb = numel(dw) + numel(db);
     grad((idx+numwb-1):-1:idx) = [db ; dw(:)];
     idx = idx + numwb;
