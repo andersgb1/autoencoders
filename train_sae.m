@@ -202,6 +202,7 @@ netfile = 'net.mat';
 %% Start pretraining
 if resume && exist(netfile, 'file')
     if verbose, fprintf('Pretrained network already exists! Skipping pretraining...\n'); end
+    load(netfile);
 else
     inputs = X;
     enc_init = [];
@@ -295,11 +296,27 @@ else
 end
 
 % net = train(net, X', X');
+net = sgd(net, X', X', max_epochs, learning_rate,...
+    'Batches', batches,...
+    'ValidationFraction', val_frac,...
+    'Loss', loss,...
+    'Adadelta', true,...
+    'Momentum', momentum,...
+    'Regularizer', regularizer,...
+    'Verbose', verbose,...
+    'Visualize', visualize,...
+    'CheckpointFile', 'sgd_sae.mat');
 
+if resume, save(netfile, 'net', 'net_init'); end
+
+if nargout > 1, varargout{1} = net_init; end
+
+return
 
 %% Setup mini-batches
 N = size(X,1);
 if isempty(batches), batches = {1:N}; end
+batches_train = batches;
 
 Nbatch = length(batches);
 Nval = 0;
@@ -308,7 +325,7 @@ if val_frac > 0
     if Nval > 0
         Nbatch = Nbatch - Nval;
         batches_val = batches{(Nbatch+1):(Nbatch+Nval)}; % Produces a vector
-        batches = batches(1:Nbatch); % Produces a cell array
+        batches_train = batches(1:Nbatch); % Produces a cell array
         Xval = X(batches_val,:);
         perf_val = zeros(1, max_epochs);
     end
@@ -383,7 +400,7 @@ for epoch = iter_start:max_epochs
         if verbose, chars = fprintf('\tBatch %i/%i\n', j, Nbatch); end
         
         % Get batch data
-        Xb = X(batches{j},:);
+        Xb = X(batches_train{j},:);
         
         % Get current weights
         w = getwb(net);
