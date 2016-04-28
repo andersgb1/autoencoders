@@ -350,7 +350,7 @@ for epoch = iter_start:max_epochs
         batch_numel(j) = numel(Xb);
         
         % Get current weights
-        w = getwb(net);
+        W = getwb(net);
         
         % Run minimization
         % SCG
@@ -360,9 +360,9 @@ for epoch = iter_start:max_epochs
 %         [w, ~, ~] = scg(@f, w', options, @df, net, Xb');
         
         % Momentum and learning rate
-        gradj = df(w, net, Xb')';
-        Winc = momentum * Winc - learning_rate * gradj - learning_rate * regularizer * w;
-        w = w + Winc;
+        gradj = df(W, net, Xb')';
+        Winc = momentum * Winc - learning_rate * gradj - learning_rate * regularizer * W;
+        W = W + Winc;
         
 %         % AdaGrad
 %         gradj = df(w, net, Xb')';
@@ -378,7 +378,7 @@ for epoch = iter_start:max_epochs
 %         gradbatch(j) = norm(gradj);
         
         % Update weights
-        net = setwb(net, w);
+        net = setwb(net, W);
         
         % Compute error of mini-batch
         ssebatch(j) = sse(Xb' - net(Xb'));
@@ -483,8 +483,14 @@ for epoch = iter_start:max_epochs
     % Termination
     if Nval > 0 && epoch > 1
         if perf_val(epoch) >= perf_val(epoch-1)
-            fprintf('Validation error has stagnated at %f!', perf_val(epoch));
-            if lr_dec < 5
+            fprintf('Validation error has stagnated at %f\n!', perf_val(epoch));
+            if lr_dec < 4
+%                 fprintf('\tDiscarding weight change with norm %.0e\n', norm(Winc));
+%                 perf(epoch) = perf(epoch-1);
+%                 perf_val(epoch) = perf_val(epoch-1);
+%                 W = W - Winc;
+%                 net = setwb(net, W);
+%                 
                 tmp = learning_rate / 10;
                 fprintf('\tScaling learning rate: %f --> %f...\n', learning_rate, tmp);
                 learning_rate = tmp;
