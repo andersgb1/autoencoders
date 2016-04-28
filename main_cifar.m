@@ -17,12 +17,12 @@ Nreduce = 0;
 augment = true;
 
 % Layer sizes
-num_hidden = [4000 2000 1000 500 100];
+num_hidden = [4000 2000 1000 500 250];
 
 % Number of training iterations for the individual layers and for the final
 % fine tuning
 Niter_init = 1000*ones(1,length(num_hidden));
-Niter_fine = 1000;
+Niter_fine = 13;
 
 % Learning parameters
 learning_rate = 0.01;
@@ -77,35 +77,86 @@ if augment
     else
         warning('Artificially changing the training set by augmentation!')
         [dim, N] = size(train_images);
-        % Reduce to 5k
+        Naugment = 5000;
+        % Reduce to Naugment examples
         idx_reduce = randperm(N);
-        train_images = train_images(:, idx_reduce(1:5000));
+        train_images = train_images(:, idx_reduce(1:Naugment));
         N = size(train_images, 2);
         
         % Rotation
-        tmp = zeros(dim, 4 * N);
-        idx = 1;
+%         rotations = 0:90:270;
+        rotations = 0;
+        Nrot = length(rotations);
+        % Create background masks for rotated images
+        Mrots = false(41, 41, Nrot);
+        for j=1:Nrot
+            Mrots(:,:,j) = ~imrotate(true(41, 41), rotations(j), 'crop');
+            Mrots(:,:,j) = Mrots(:,:,j) & ~imclearborder(Mrots(:,:,j));
+        end
+        tmp = zeros(dim, Nrot * N);
+        idxtmp = 0;
         for i=1:N
             imgi = train_images(:,i);
-            tmp(:,idx) = imgi; % Original
-            imgi = reshape(imgi, 41, 41); % As 2D image
+%             mu = mean(imgi); % Mean intensity of training case
+            % As 2D image
+            imgi = reshape(imgi, 41, 41);
             % Rotate
-            for j=1:3, tmp(:,idx+j) = reshape(imrotate(imgi, 90*j), dim, 1); end
-            idx = idx+4;
+            for j=1:Nrot
+                % Rotate
+                imrot = imrotate(imgi, rotations(j), 'crop');
+                 % Set background to mean intensity
+                mask = Mrots(:,:,j);
+%                 imrot(mask) = mu; % Set background to mean
+                imrot(mask) = 0; % Set background to black
+                % As vector
+                tmp(:,idxtmp+j) = reshape(imrot, dim, 1);
+            end
+            idxtmp = idxtmp + Nrot;
         end
         train_images = tmp;
         N = size(train_images, 2);
         
         % Gamma
-        tmp = zeros(dim, 3 * N);
-        idx = 1;
+        gammas = 1 ./ [0.5 0.4 0.3 0.2 0.1];
+%         gammas = 1;
+        Ngamma = length(gammas);
+        tmp = zeros(dim, Ngamma * N);
+        idxtmp = 0;
         for i=1:N
             imgi = train_images(:,i);
-            tmp(:,idx) = imgi; % Original
+%             tmp(:,idxtmp) = imgi; % Original
             % Apply gamma
-            tmp(:,idx+1) = imgi.^0.5;
-            tmp(:,idx+2) = imgi.^2;
-            idx = idx+3;
+            for j=1:Ngamma
+                tmp(:,idxtmp+j) = imgi.^gammas(j);
+            end
+            idxtmp = idxtmp + Ngamma;
+        end
+        train_images = tmp;
+        N = size(train_images, 2);
+        
+        % Scaling
+%         scales = [1 1.4 1.6 1.8];
+        scales = 1;
+        Nscale = length(scales);
+        % Prepare crop masks
+        crops = zeros(Nscale, 4);
+        for j=1:Nscale
+            newsz = scales(j) * 41;
+            szdiff = newsz - 41;
+            offset = floor(szdiff / 2);
+            crops(j,:) = [offset+1 offset+1 offset+41 offset+41];
+        end
+        tmp = zeros(dim, Nscale * N);
+        idxtmp = 0;
+        for i=1:N
+            % As 2D image
+            imgi = reshape(train_images(:,i), 41, 41);
+            for j=1:Nscale
+                imgi = imresize(imgi, scales(j));
+                imgi = imgi(crops(j,1):crops(j,3), crops(j,2):crops(j,4));
+                tmp(:,idxtmp+j) = reshape(imgi, dim, 1);
+            end
+            idxtmp = idxtmp + Nscale;
         end
         train_images = tmp;
         N = size(train_images, 2);
@@ -120,10 +171,10 @@ Ntrain = size(train_images,2);
 
 %% Reduce training set
 if Nreduce > 0
-    idx = randperm(Ntrain);
-    idx = idx(1:Nreduce);
-    warning('Reducing training set to %d examples...', length(idx));
-    train_images = train_images(:,idx);
+    idxtmp = randperm(Ntrain);
+    idxtmp = idxtmp(1:Nreduce);
+    warning('Reducing training set to %d examples...', length(idxtmp));
+    train_images = train_images(:,idxtmp);
     Ntrain = size(train_images,2);
 end
 
@@ -182,13 +233,13 @@ net_train_rec = net_init(train_images_std);
 fprintf('    NN reconstruction error: %f\n', mse(net_train_rec*sigma+repmat(mu',1,Ntrain) - train_images));
 net_fine_train_rec = net(train_images_std);
 fprintf('    Fine-tuned NN reconstruction error: %f\n', mse(net_fine_train_rec*sigma+repmat(mu',1,Ntrain) - train_images));
-idx = randi(Ntrain);
+idxtmp = randi(Ntrain);
 wh = sqrt(size(train_images,1)); % Image width/height
 figure('Name', 'Example')
-subplot(221),imagesc(reshape(train_images(:,idx), [wh wh])),title('Input image')
-subplot(222),imagesc(reshape(pca_train_rec(idx,:)', [wh wh])),title('PCA reconstruction')
-subplot(223),imagesc(reshape(net_train_rec(:,idx)*sigma+mu', [wh wh])),title('NN reconstruction')
-subplot(224),imagesc(reshape(net_fine_train_rec(:,idx)*sigma+mu', [wh wh])),title('Fine-tuned NN reconstruction')
+subplot(221),imagesc(reshape(train_images(:,idxtmp), [wh wh])),title('Input image')
+subplot(222),imagesc(reshape(pca_train_rec(idxtmp,:)', [wh wh])),title('PCA reconstruction')
+subplot(223),imagesc(reshape(net_train_rec(:,idxtmp)*sigma+mu', [wh wh])),title('NN reconstruction')
+subplot(224),imagesc(reshape(net_fine_train_rec(:,idxtmp)*sigma+mu', [wh wh])),title('Fine-tuned NN reconstruction')
 colormap gray
 
 %% Show some 1-layer unit weights
