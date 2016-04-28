@@ -309,8 +309,13 @@ for epoch = 1:max_epochs
 %     end
     if Nval > 0 && epoch > 1
         if perf_val(epoch) >= perf_val(epoch-1)
-            fprintf('Validation error has stagnated at %f!', perf_val(epoch));
-            if lr_dec < 5
+            fprintf('Validation error has stagnated at %f\n!', perf_val(epoch));
+            if lr_dec < 3
+                fprintf('\tDiscarding weight change with norm %.0e\n', norm(Winc(:)));
+                perf(epoch) = perf(epoch-1);
+                perf_val(epoch) = perf_val(epoch-1);
+                W = W - Winc;
+                
                 tmp = learning_rate / 10;
                 fprintf('\tScaling learning rate: %.0e --> %.0e...\n', learning_rate, tmp);
                 learning_rate = tmp;
