@@ -85,6 +85,8 @@ p.addParameter('GaussianNoise', 0, @isnumeric)
 p.addParameter('LearningRate', 0.1, @isfloat)
 p.addParameter('Momentum', 0.9, @isfloat)
 p.addParameter('Regularizer', 0.0005, @isfloat)
+p.addParameter('Restart', false, @islogical)
+p.addParameter('RestartRate', 0, @isnumeric)
 p.addParameter('Sigma', 0.1, @isfloat)
 p.addParameter('RowMajor', true, @islogical)
 p.addParameter('Width', 0, @isnumeric)
@@ -112,6 +114,9 @@ assert(mask_noise >= 0 && mask_noise < 1, 'Masking noise level must be a number 
 gauss_noise = p.Results.GaussianNoise;
 
 regularizer = p.Results.Regularizer;
+restart = p.Results.Restart;
+restart_rate = p.Results.RestartRate;
+if restart, assert(restart_rate > 0); end
 
 sigma = p.Results.Sigma;
 
@@ -301,9 +306,26 @@ for epoch = 1:max_epochs
         dib = dib / batch_size;
         
         %% The tied weight case...
-        tmp=dhw;
-        dhw=dhw+diw';
-        diw = diw+tmp';
+        if tied_weights
+            dhw = dhw + diw';
+            diw = dhw';
+            
+            if num_hidden==1000 && epoch >= 25
+                norms = zeros(num_hidden,1);
+                for j=1:num_hidden, norms(j) = norm(Wvis(j,:)); end
+                [~,idx] = sort(norms, 'descend');
+                Wstrong = Wvis(idx(1:round(num_hidden/20)),:);
+                
+%                 Wstrongmean = mean(Wstrong);
+%                 diw = diw + 0.001*bsxfun(@minus, Wstrongmean, Wvis);
+                Wvisproj = ( Wstrong'*pinv(Wstrong*Wstrong')*Wstrong*Wvis' )';
+                diw = diw + 0.001*(Wvisproj - Wvis);
+                
+                dhw = diw';
+            end
+        end
+        
+        
 
         %% Update weights and biases
         Wvisinc = momentum * Wvisinc + learning_rate * ( diw - regularizer * Wvis );
@@ -320,6 +342,89 @@ for epoch = 1:max_epochs
         Bhidinc = momentum * Bhidinc + learning_rate * dhb;
         Bhid = Bhid + Bhidinc;
     end % End loop over batches
+        
+        
+    if restart && mod(epoch, restart_rate) == 0 && epoch < max_epochs % TODO
+        norms = zeros(num_hidden,1);
+        grads = zeros(num_hidden,1);
+        for i=1:num_hidden
+            norms(i) = norm(Wvis(i,:));
+            grads(i) = norm(Wvisinc(i,:));
+        end
+
+        % Weight space (one neuron per row)
+        Wtmp=Wvis;
+        
+        % Sort by strength
+%         [~,idx] = sort(norms, 'descend');
+        [~,idx] = sort(grads, 'descend');
+        
+        % Get the Nstrong = 10 % strongest units
+        Nstrong = round(0.1*num_hidden);
+        Wstrong = Wtmp(idx(1:Nstrong),:);
+        Wweak = Wvis(idx(end-Nstrong+1:end),:);
+        
+%         % Replace the weakest units by the strongest units
+%         Wvis(idx(end-Nstrong+1:end),:) = Wstrong;
+        
+%         % Replace each weak unit by the mean of two random strong units
+%         for i=Nstrong+1:num_hidden
+%             i1 = randi(Nstrong);
+%             i2 = randi(Nstrong);
+%             while i1 == i2, i1=randi(Nstrong); i2 = randi(Nstrong); end
+%             Wvis(idx(i),:) = (Wstrong(i1,:) + Wstrong(i2,:)) / 2;
+%         end
+        
+%         % Replace the weakest units by the nullspace of the strongest units
+%         Wnull = null(Wstrong)';
+%         Nnull = size(Wnull,1);
+%         Wvis(idx(end-Nnull+1:end),:) = Wnull;
+
+        % Replace the weak units by their reconstruction from a PCA of the
+        % strongest units
+%         [c,mu] = train_pca(Wstrong);
+%         Wvis(idx(end-Nstrong+1:end),:) = reproject_pca(project_pca(Wweak, c, mu), c, mu);
+
+%         % Project Wweak to the Wstrong subspace
+%         P = Wstrong * pinv(Wstrong' * Wstrong) * Wstrong';
+%         Wvis(idx(end-Nstrong+1:end),:) = P * Wweak;
+        
+        % TODO: Project to Wstrong's subspace
+%         Wvis(idx(end-Nstrong+1:end),:) = ( Wstrong'*pinv(Wstrong*Wstrong')*Wstrong*Wweak' )';
+        
+%         % Project to W's subspace
+%         [c,mu] = train_pca(Wtmp);
+%         Wvis(idx(end-Nstrong+1:end),:) = project_pca(Wweak, c, mu);
+%         
+%             plot_neurons(Wweak', width, 10, 'Strongest', false, 'Strengths', norms(idx(end-Nstrong+1:end)), 'Name', 'Before');
+%             plot_neurons(Wvis(idx(end-Nstrong+1:end),:)', width, 10, 'Strongest', false, 'Strengths', norms(idx(end-Nstrong+1:end)), 'Name', 'After');
+%         
+        % The tied weight case
+        if tied_weights
+            Whid = Wvis';
+        end
+        
+%         % Viz
+%         plot_neurons(Wnull', width, 5, 'Strongest', true, 'Name', 'Null, strong');
+%         plot_neurons(Wnull', width, 5, 'Strongest', false, 'Name', 'Null, weak');
+%         Wdot=Wnull*Wnull';
+%         figure('Name', 'Wnull')
+%         subplot(121),imagesc(Wdot),colormap gray,colorbar
+%         set(gca, 'YDir', 'normal')
+%         subplot(122),histogram(Wdot(:))
+%         
+%         % Show dot products, sorted
+%         Wtmp=Wtmp(idx,:);
+%         Wdot=Wtmp*Wtmp';
+%         figure('Name', 'Wtmp')
+%         subplot(121),imagesc(Wdot),colormap gray,colorbar
+%         set(gca, 'YDir', 'normal')
+%         subplot(122),histogram(Wdot(:))
+%         plot_neurons(Wtmp', width, 5, 'Strongest', true);
+%         plot_neurons(Wtmp', width, 5, 'Strongest', false);
+%         
+%         error
+    end
     
     % Compute training error (must be done on CPU due to memory limits)
     if has_gpu
