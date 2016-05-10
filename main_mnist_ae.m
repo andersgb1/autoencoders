@@ -12,18 +12,18 @@ resume = true;
 Nreduce = 0;
 
 % Layer sizes
-num_hidden = [1000 500 250 30];
+% num_hidden = [1000 500 250 30];
 % num_hidden = [500 500 2000];
-% num_hidden = 1000;
+num_hidden = 1000;
 
 % Number of training iterations for the individual layers and for the final
 % fine tuning
 Niter_init = 50;
-Niter_fine = 250;
+Niter_fine = 2e3;
 classify = true; % Set to true to avoid backprop on autoencoder stack
 
 % Learning parameters
-learning_rate = 0.05;
+learning_rate = 0.01;
 learning_rate_final = 0.0005;
 momentum = 0.95;
 momentum_final = 0.9;
@@ -80,7 +80,8 @@ else
         'BatchesInit', batches_init,...
         'Batches', batches,...
         'ValidationFraction', 0,...
-        'MaskingNoise', 0.5,...
+        'MaskingNoise', 0.25,...
+        'GaussianNoise', 0,...
         'LearningRate', learning_rate,...
         'LearningRateMul', learning_rate_mul,...
         'Momentum', momentum,...
@@ -95,39 +96,13 @@ else
     delete 'net.mat';
     save('data/mnist_ae.mat', 'net', 'net_init');
 end
-    
+
 % Get encoder for initial/final network
 enc = get_layer(net,1);
 enc_init = get_layer(net_init,1);
 for i=2:length(num_hidden)
     enc = stack(enc, get_layer(net,i));
     enc_init = stack(enc_init, get_layer(net_init,i));
-end
-
-if num_hidden(end) < size(train_images,1)
-    %% Get a PCA for the training images
-    disp 'Getting a PCA...'
-    [c,mu] = train_pca(train_images', num_hidden(end));
-    pca_train_feat = project_pca(train_images', c, mu);
-
-    %% Present reconstruction errors
-    disp 'Presenting reconstruction errors (cross entropy)...'
-    % Reconstructions of training data before/after fine tuning and using PCA
-    floss = @(t,y) sum(sum( -t .* log(y + eps) - (1 - t) .* log(1 - y + eps) )) / numel(t);
-    pca_train_rec = reproject_pca(pca_train_feat, c, mu);
-    fprintf('    PCA(%d) reconstruction error: %.4f\n', num_hidden(end), floss(train_images,pca_train_rec'));
-    net_train_rec = net_init(train_images);
-    fprintf('    NN reconstruction error: %.4f\n', floss(train_images,net_train_rec));
-    net_fine_train_rec = net(train_images);
-    fprintf('    Fine-tuned NN reconstruction error: %.4f\n', floss(train_images,net_fine_train_rec));
-    idx = randi(Ntrain);
-    wh = sqrt(size(train_images,1)); % Image width/height
-    figure('Name', 'Example')
-    subplot(221),imagesc(reshape(train_images(:,idx), [wh wh])),title('Input image')
-    subplot(222),imagesc(reshape(pca_train_rec(idx,:)', [wh wh])),title('PCA reconstruction')
-    subplot(223),imagesc(reshape(net_train_rec(:,idx), [wh wh])),title('NN reconstruction')
-    subplot(224),imagesc(reshape(net_fine_train_rec(:,idx), [wh wh])),title('Fine-tuned NN reconstruction')
-    colormap gray
 end
 
 if classify
@@ -137,29 +112,56 @@ if classify
         fprintf('Loading pretrained classification network from checkpoint \"%s\"...\n', chkpnt)
         load(chkpnt)
         soft = checkpoint.net;
-        soft.trainParam.epochs = Niter_fine - length(checkpoint.time); % TODO: Matlab does not save training record properly!
+        % TODO: Matlab does not save training record properly!
     else
-        lsoft = create_layer(enc.outputs{end}.size, 10, 'softmax', 0.1*rand(10,enc.outputs{end}.size), 0.1*rand(10,1), 'traincgp');
+        lsoft = create_layer(enc.outputs{end}.size, 10, 'softmax', 0.1*rand(10,enc.outputs{end}.size), 0.1*rand(10,1), 'trainscg');
         lsoft.performFcn = 'crossentropy';
         soft = stack(enc, lsoft);
         soft.divideFcn = 'dividetrain';
         soft.trainParam.epochs = Niter_fine;
+        soft.trainParam.min_grad = 1e-15;
     end
     soft = train(soft, train_images, Ttrain, 'CheckpointFile', chkpnt);
-    % soft = sgd(soft, train_images, Ttrain, Niter_fine, learning_rate,...
-    %     'Batches', batches,...
-    %     'ValidationFraction', 0.1,...
-    %     'Loss', 'crossentropy',...
-    %     'Adadelta', false,...
-    %     'Momentum', momentum,...
-    %     'Regularizer', 0,...
-    %     'Verbose', true,...
-    %     'Visualize', true,...
-    %     'CheckpointFile', 'sgd_soft.mat');
+%     soft = sgd(soft, train_images, Ttrain, Niter_fine, learning_rate,...
+%         'Batches', batches,...
+%         'ValidationFraction', 0.1,...
+%         'Loss', 'crossentropy',...
+%         'Adadelta', true,...
+%         'Momentum', momentum,...
+%         'Regularizer', 0,...
+%         'Verbose', true,...
+%         'Visualize', true,...
+%         'CheckpointFile', 'sgd_soft.mat');
 
 
     %% Present classification results
     figure,plotconfusion(Ttest, soft(test_images))
+else
+    if num_hidden(end) < size(train_images,1)
+        %% Get a PCA for the training images
+        disp 'Getting a PCA...'
+        [c,mu] = train_pca(train_images', num_hidden(end));
+        pca_train_feat = project_pca(train_images', c, mu);
+
+        %% Present reconstruction errors
+        disp 'Presenting reconstruction errors (cross entropy)...'
+        % Reconstructions of training data before/after fine tuning and using PCA
+        floss = @(t,y) sum(sum( -t .* log(y + eps) - (1 - t) .* log(1 - y + eps) )) / numel(t);
+        pca_train_rec = reproject_pca(pca_train_feat, c, mu);
+        fprintf('    PCA(%d) reconstruction error: %.4f\n', num_hidden(end), floss(train_images,pca_train_rec'));
+        net_train_rec = net_init(train_images);
+        fprintf('    NN reconstruction error: %.4f\n', floss(train_images,net_train_rec));
+        net_fine_train_rec = net(train_images);
+        fprintf('    Fine-tuned NN reconstruction error: %.4f\n', floss(train_images,net_fine_train_rec));
+        idx = randi(Ntrain);
+        wh = sqrt(size(train_images,1)); % Image width/height
+        figure('Name', 'Example')
+        subplot(221),imagesc(reshape(train_images(:,idx), [wh wh])),title('Input image')
+        subplot(222),imagesc(reshape(pca_train_rec(idx,:)', [wh wh])),title('PCA reconstruction')
+        subplot(223),imagesc(reshape(net_train_rec(:,idx), [wh wh])),title('NN reconstruction')
+        subplot(224),imagesc(reshape(net_fine_train_rec(:,idx), [wh wh])),title('Fine-tuned NN reconstruction')
+        colormap gray
+    end
 end
 
 %% Show some 1-layer unit weights
