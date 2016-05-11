@@ -27,22 +27,15 @@ for i = 1:ffnet.numLayers
 end
 
 %% Backward pass
+% % Output error
+if any(strcmp(loss, {'crossentropy', 'log', 'binary_crossentropy', 'crossentropy_binary'}))
+    assert(strcmp(ffnet.layers{end}.transferFcn, 'logsig'), 'Cross-entropy loss function requires logistic output units!')
+end
+[~,delta] = backprop_loss(target, o{end}, loss);
+
+% Backpropagate
 grad = zeros(ffnet.numWeightElements, 1);
 idx = 1;
-% Output error
-switch loss
-    case 'mse'
-        delta = (target - o{end});
-    case 'mae'
-        delta = 0.5 * sign(target - o{end});
-    case {'crossentropy', 'log'}
-        delta = 0.5 * target ./ (o{end} + eps);
-    case 'binary_crossentropy'
-        delta = 0.5 * (target - o{end}) ./ (o{end} .* (1 - o{end}) + eps);
-    otherwise
-        error('Unknown loss function: %s!\n', loss);
-end
-% Backpropagate
 for i = ffnet.numLayers:-1:1
     % Delta
     if i == ffnet.numLayers % Output layer
@@ -58,13 +51,13 @@ for i = ffnet.numLayers:-1:1
     
     % Weight update
     if i > 1 % Hidden or output layer
-        dw = delta * o{i-1}' / size(target,2);
+        dw = delta * o{i-1}';
     else % Input layer
-        dw = delta * input' / size(target,2);
+        dw = delta * input';
     end
     
     % Bias update
-    db = sum(delta, 2) / size(target,2);
+    db = sum(delta, 2);
     
     % Collect updates
     numwb = numel(dw) + numel(db);
