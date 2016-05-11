@@ -46,7 +46,7 @@ end
 %% Backward pass
 % % Output error
 if any(strcmp(loss, {'crossentropy', 'log', 'binary_crossentropy', 'crossentropy_binary'}))
-    assert(strcmp(ffnet.layers{end}.transferFcn, 'logsig'), 'Cross-entropy loss function requires logistic output units!')
+    assert(any(strcmp(ffnet.layers{end}.transferFcn, {'logsig', 'softmax'})), 'Cross-entropy loss function requires logistic or softmax output units!')
 end
 [~,delta] = backprop_loss(target, o{end}, loss, 'Normalization', normalization);
 
