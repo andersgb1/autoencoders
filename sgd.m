@@ -107,7 +107,7 @@ for epoch = iter:max_epochs
         w = getwb(net);
         
         % Run minimization
-        gradj = -backprop(net, batch_input, batch_target, 'Loss', loss); % Positive gradient
+        gradj = backprop(net, batch_input, batch_target, 'Loss', loss, 'Normalization', 'batch'); % Gradient
         if adadelta
             Egrad = momentum * Egrad + (1 - momentum) * (gradj') * gradj;
             Winc = -sqrt(Edelta + 1e-5) / sqrt(Egrad + 1e-5) * gradj;

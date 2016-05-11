@@ -1,15 +1,32 @@
 function grad = backprop(ffnet, input, target, varargin)
+% BACKPROP  Compute gradient of a feed-forward neural network.
+%   grad = BACKPROP(ffnet, input, target, ...) computes the gradient of the
+%   network in ffnet.
+%
+%   Name value pair options (default value):
+%
+%       'Loss' (empty): loss function. If empty, use the loss provided by
+%       the network. Otherwise it can be one of these:
+%       'mse', 'mae', 'crossentropy', 'log', 'crossentropy_binary',
+%       'binary_crossentropy'.
+%
+%       'Normalization' ('full'): normalization factor. If 'full', then the
+%       loss/derivatives are divided by the total number of elements in
+%       target/output - this is the MATLAB default. If 'batch', then we
+%       divide by the number of columns
 
 % Get opts
 p = inputParser;
 p.CaseSensitive = false;
 p.addParameter('Loss', '', @ischar)
+p.addParameter('Normalization', 'full', @ischar)
 p.parse(varargin{:});
 
 loss = p.Results.Loss;
 if isempty(loss)
     loss = ffnet.performFcn;
 end
+normalization = p.Results.Normalization; 
 
 %% Forward pass
 % Layer outputs and derivatives
@@ -31,7 +48,7 @@ end
 if any(strcmp(loss, {'crossentropy', 'log', 'binary_crossentropy', 'crossentropy_binary'}))
     assert(strcmp(ffnet.layers{end}.transferFcn, 'logsig'), 'Cross-entropy loss function requires logistic output units!')
 end
-[~,delta] = backprop_loss(target, o{end}, loss);
+[~,delta] = backprop_loss(target, o{end}, loss, 'Normalization', normalization);
 
 % Backpropagate
 grad = zeros(ffnet.numWeightElements, 1);
