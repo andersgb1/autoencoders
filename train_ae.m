@@ -50,8 +50,9 @@ function [enc,dec] = train_ae(X, num_hidden, varargin)
 %
 %       'Regularizer' (0.0005): regularizer for the weight update
 %
-%       'Sigma' (0.1): standard deviation for the random Gaussian
-%       distribution used for initializing the weights
+%       'Sigma' (0): standard deviation for the random Gaussian
+%       distribution used for initializing the weights - if set to zero, it
+%       is automatically determined
 %
 %       'RowMajor' (true): logical specifying whether the observations in X
 %       are placed in rows or columns
@@ -146,6 +147,9 @@ if width > 0 % Image data
 elseif round(sqrt(num_visible)) == sqrt(num_visible) % Quadratic dimension, can also be shown
     width = sqrt(num_visible);
     height = width;
+end
+if sigma <= 0
+    sigma = 1/sqrt(num_visible);
 end
 Wvis = sigma * randn(num_hidden, num_visible);
 if tied_weights
@@ -270,7 +274,7 @@ for epoch = 1:max_epochs
         
         %% The DAE case
         if mask_noise > 0
-            mask = (rand(size(Xb)) > mask_noise);
+            mask = binornd(1, 1-mask_noise, size(Xb));
             in = Xb .* mask;
         else
             in = Xb;
@@ -288,9 +292,10 @@ for epoch = 1:max_epochs
         out = feval(decoder_function, aout); % Output
         dout = feval(decoder_function, 'dn', aout); % Output derivatives
         
-        %% Backward pass - NOTE: computes negative gradient
-        % Output error (negative)
-        [~,derr] = backprop_loss(Xb', out, loss);
+        %% Backward pass
+        % Output error, negated
+        [~,derr] = backprop_loss(Xb', out, loss, 'Normalization', 'batch');
+        derr = -derr;
         deltaout = dout .* derr; % Output delta
         dhw = deltaout * hid'; % Hidden-output weight gradient
         dhb = sum(deltaout, 2); % Hidden-output bias gradient
@@ -298,31 +303,37 @@ for epoch = 1:max_epochs
         deltahid = dhid .* (Whid' * deltaout); % Hidden delta
         diw = deltahid * in; % Input-hidden weight gradient
         dib = sum(deltahid, 2); % Input-hidden bias gradient
-        
-        %% Divide gradients by number of samples
-        dhw = dhw / batch_size;
-        dhb = dhb / batch_size;
-        diw = diw / batch_size;
-        dib = dib / batch_size;
-        
+%         
         %% The tied weight case...
         if tied_weights
             dhw = dhw + diw';
             diw = dhw';
-            
-            if num_hidden==1000 && epoch >= 25
-                norms = zeros(num_hidden,1);
-                for j=1:num_hidden, norms(j) = norm(Wvis(j,:)); end
-                [~,idx] = sort(norms, 'descend');
-                Wstrong = Wvis(idx(1:round(num_hidden/20)),:);
-                
-%                 Wstrongmean = mean(Wstrong);
-%                 diw = diw + 0.001*bsxfun(@minus, Wstrongmean, Wvis);
-                Wvisproj = ( Wstrong'*pinv(Wstrong*Wstrong')*Wstrong*Wvis' )';
-                diw = diw + 0.001*(Wvisproj - Wvis);
-                
-                dhw = diw';
-            end
+%             
+%             if num_hidden==1000 && epoch >= 5
+%                 norms = zeros(num_hidden,1);
+%                 for j=1:num_hidden, norms(j) = norm(Wvis(j,:)); end
+%                 [~,idx] = sort(norms, 'descend');
+%                 Wstrong = Wvis(idx(1:round(num_hidden/20)),:);
+%                 
+% %                 Wstrongmean = mean(Wstrong);
+% %                 diw = diw + 0.001*bsxfun(@minus, Wstrongmean, Wvis);
+%                 Wvisproj = ( Wstrong'*pinv(Wstrong*Wstrong')*Wstrong*Wvis' )';
+%                 diw = diw + 0.001*(Wvisproj - Wvis);
+%                 
+%                 dhw = diw';
+%                 
+%                 if i==1
+%                     gnorms=zeros(num_hidden,1);
+%                     for j=1:num_hidden, gnorms(j) = norm(diw(j,:)); end
+%                     pnorms=zeros(num_hidden,1);
+%                     for j=1:num_hidden, pnorms(j) = norm(Wvisproj(j,:)-Wvis(j,:)); end
+%                     figure,
+%                     subplot(131),plot(norms(idx))
+%                     subplot(132),plot(gnorms(idx),'.')
+%                     subplot(133),plot(pnorms(idx), '.')
+%                     drawnow
+%                 end
+%             end
         end
         
         
