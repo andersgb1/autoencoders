@@ -5,7 +5,7 @@ path('repeatibility', path);
 % Image root path
 root='repeatibility';
 seqs = {'bark', 'bikes', 'boat', 'graf', 'leuven', 'trees', 'ubc', 'wall'};
-    
+
 % Image(s) to consider
 idxx = {'1', '2', '4'};
 
@@ -17,14 +17,15 @@ detector='hesaff';
 thres = 0.025; % Only applied for VLFeat detectors
 
 %% Load network
-% load data/oxford.mat
-load data/cifar.mat
+root_net = 'data';
+
+load([root_net '/cifar.mat'])
 enc = get_encoder(net);
 enc_init = get_encoder(net_init);
 
 %% Load PCA
 % load data/oxford_pca.mat
-load data/cifar_pca.mat
+load([root_net '/cifar_pca.mat'])
 
 %% Loop over image sequences
 for seqc = seqs
