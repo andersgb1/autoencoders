@@ -1,14 +1,15 @@
-function grad = backprop(ffnet, input, target, varargin)
+function [dW,db,f] = backprop(W, b, transfer, input, target, loss, varargin)
 % BACKPROP  Compute gradient of a feed-forward neural network.
-%   grad = BACKPROP(ffnet, input, target, ...) computes the gradient of the
-%   network in ffnet.
+%   [dW,db] = BACKPROP(W, b, transfer, input, target, ...) computes the
+%   gradient of a feed-forward network given by corresponding cell lists of
+%   weights (W), biases (b) and transfer functions (transfer)
+%
+%   [dW,db,f] = BACKPROP(...) also outputs the loss
 %
 %   Name value pair options (default value):
 %
-%       'Loss' (empty): loss function. If empty, use the loss provided by
-%       the network. Otherwise it can be one of these:
-%       'mse', 'mae', 'crossentropy', 'log', 'crossentropy_binary',
-%       'binary_crossentropy'.
+%       'DropoutRate' (0): Set this to a number > 0 and < 1 for dropout
+%       for the hidden layers, where 0 means no dropout.
 %
 %       'Normalization' ('full'): normalization factor. If 'full', then the
 %       loss/derivatives are divided by the total number of elements in
@@ -18,67 +19,93 @@ function grad = backprop(ffnet, input, target, varargin)
 % Get opts
 p = inputParser;
 p.CaseSensitive = false;
-p.addParameter('Loss', '', @ischar)
+p.addParameter('DropoutRate', 0, @isfloat)
 p.addParameter('Normalization', 'full', @ischar)
 p.parse(varargin{:});
-
-loss = p.Results.Loss;
-if isempty(loss)
-    loss = ffnet.performFcn;
-end
+dropout = p.Results.DropoutRate;
+assert(dropout < 1, 'Dropout rate must be < 1!');
 normalization = p.Results.Normalization; 
+
+numLayers = length(W);
+% numWeightElements = sum(cellfun(@numel, W)) + sum(cellfun(@numel, b));
 
 %% Forward pass
 % Layer outputs and derivatives
-o = cell(ffnet.numLayers, 1);
-do = cell(ffnet.numLayers, 1);
+o = cell(numLayers, 1);
+do = cell(numLayers, 1);
 % Forward propagate
-for i = 1:ffnet.numLayers
+for i = 1:numLayers
     if i == 1
-        a = bsxfun(@plus, ffnet.IW{1} * input, ffnet.b{1});
+        a = bsxfun(@plus, W{i} * input, b{i});
     else
-        a = bsxfun(@plus, ffnet.LW{i,i-1} * o{i-1}, ffnet.b{i});
+        a = bsxfun(@plus, W{i} * o{i-1}, b{i});
     end
-    o{i} = feval(ffnet.layers{i}.transferFcn, a);
-    do{i} = feval(ffnet.layers{i}.transferFcn, 'dn', a);
+    o{i} = feval(transfer{i}, a);
+    do{i} = feval(transfer{i}, 'dn', a);
+
+%     % TODO: This is the derivative in the softmax case - and it's slow as
+%     % hell on GPU
+%     if strcmp(transfer{i}, 'softmax')
+%         [dim,N] = size(o{i});
+%         tmp = cell(1,N);
+%         for j=1:N
+%             oj = o{i}(:,j);
+%             tmp{j} = gpuArray(zeros(dim,dim));
+%             for r=1:dim
+%                 for c=1:dim
+%                     if r==c
+%                         tmp{j}(r,c) = oj(r)*(1-oj(r));
+%                     else
+%                         tmp{j}(r,c) = -oj(r)*oj(c);
+%                     end
+%                 end
+%             end
+%         end
+%     end
+    
+    % Dropout hidden layers
+    % https://gist.github.com/ottokart/ebd3d32438c13a62ea3c
+    if dropout > 0 && i < numLayers
+        mask = binornd(1, 1-dropout, size(a));
+        o{i} = mask .* o{i} / (1-dropout);
+        do{i} = mask .* do{i} / (1-dropout);
+    end
 end
 
 %% Backward pass
-% % Output error
+% Output error
 if any(strcmp(loss, {'crossentropy', 'log', 'binary_crossentropy', 'crossentropy_binary'}))
-    assert(any(strcmp(ffnet.layers{end}.transferFcn, {'logsig', 'softmax'})), 'Cross-entropy loss function requires logistic or softmax output units!')
+    assert(any(strcmp(transfer{end}, {'logsig', 'softmax'})), 'Cross-entropy loss function requires logistic or softmax output units!')
 end
-[~,delta] = backprop_loss(target, o{end}, loss, 'Normalization', normalization);
+if nargout < 3
+    [~,delta] = backprop_loss(target, o{end}, loss, 'Normalization', normalization);
+else
+    [f,delta] = backprop_loss(target, o{end}, loss, 'Normalization', normalization);
+end
 
 % Backpropagate
-grad = zeros(ffnet.numWeightElements, 1);
-idx = 1;
-for i = ffnet.numLayers:-1:1
+dW = cell(1, numLayers);
+db = cell(1, numLayers);
+for i = numLayers:-1:1
     % Delta
-    if i == ffnet.numLayers % Output layer
-        if strcmp(ffnet.layers{i}.transferFcn, 'softmax') % Softmax outputs cells
+    if i == numLayers % Output layer
+        if strcmp(transfer{i}, 'softmax') % Softmax outputs cells with a Jacobian per sample
             for j = 1:length(do{i}), delta(:,j) = do{i}{j} * delta(:,j); end
         else
             delta = do{i} .* delta;
         end
     else % Input or hidden layer
-        if strcmp(ffnet.layers{i}.transferFcn, 'softmax'), error('Softmax transfer function only supported for the output layer!'); end
-        delta = do{i} .* (ffnet.LW{i+1, i}' * delta);
+        if strcmp(transfer{i}, 'softmax'), error('Softmax transfer function only supported for the output layer!'); end
+        delta = do{i} .* (W{i+1}' * delta);
     end
     
     % Weight update
     if i > 1 % Hidden or output layer
-        dw = delta * o{i-1}';
+        dW{i} = delta * o{i-1}';
     else % Input layer
-        dw = delta * input';
+        dW{i} = delta * input';
     end
     
     % Bias update
-    db = sum(delta, 2);
-    
-    % Collect updates
-    numwb = numel(dw) + numel(db);
-    grad((idx+numwb-1):-1:idx) = [db ; dw(:)];
-    idx = idx + numwb;
+    db{i} = sum(delta, 2);
 end
-grad = flipud(grad);
