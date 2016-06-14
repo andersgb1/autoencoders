@@ -335,7 +335,7 @@ for epoch = 1:max_epochs
         Bhid = Bhid + Bhidinc;
         
         % Compute gradient norm
-        gradbatch(i) = norm([diw(:) ; dib(:) ; dhw(:) ; dhb(:)]);
+        gradbatch(i) = gather( norm([diw(:) ; dib(:) ; dhw(:) ; dhb(:)]) );
     end % End loop over batches
     
     % Compute training error (must be done on CPU due to memory limits)
@@ -419,8 +419,8 @@ for epoch = 1:max_epochs
             colormap gray
             
             % Show the strongest/weakest neurons
-            plot_neurons(Wvis', width, 5, 'Strongest', true);
-            plot_neurons(Wvis', width, 5, 'Strongest', false);
+            plot_neurons(gather(Wvis'), width, 5, 'Strongest', true);
+            plot_neurons(gather(Wvis'), width, 5, 'Strongest', false);
         end
         
         % Update figures
