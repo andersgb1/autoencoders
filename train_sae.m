@@ -65,6 +65,11 @@ function [net,varargout] = train_sae(X, num_hidden, varargin)
 %       autoencoders by introducing masking noise (randomly setting inputs
 %       to zero) in the interval [0,1[ - this only applies to pretraining
 %
+%       'SaltPepperNoise' (0): turn the autoencoders into denoising
+%       autoencoders by introducing salt and pepper noise (randomly setting
+%       inputs to either zero or one) in the interval [0,1[ - this only
+%       applies to pretraining
+%
 %       'GaussianNoise' (0): turn the autoencoder into a denoising
 %       autoencoder by introducing Gaussian noise with a standard deviation
 %       as provided
@@ -125,6 +130,7 @@ p.addParameter('BatchesInit', {}, @iscell)
 p.addParameter('Batches', {}, @iscell)
 p.addParameter('ValidationFraction', 0.1, @isnumeric)
 p.addParameter('MaskingNoise', 0, @isnumeric)
+p.addParameter('SaltPepperNoise', 0, @isnumeric)
 p.addParameter('GaussianNoise', 0, @isnumeric)
 p.addParameter('DropoutRate', 0, @isnumeric)
 p.addParameter('LearningRate', 0.05, @isnumeric)
@@ -158,6 +164,8 @@ val_frac = p.Results.ValidationFraction;
 assert(val_frac >= 0 && val_frac < 1, 'Validation fraction must be a number in [0,1[!')
 mask_noise = p.Results.MaskingNoise;
 assert(mask_noise >= 0 && mask_noise < 1, 'Masking noise level must be a number in [0,1[!')
+sp_noise = p.Results.SaltPepperNoise;
+assert(sp_noise >= 0 && sp_noise < 1, 'Salt and pepper noise level must be a number in [0,1[!')
 gauss_noise = p.Results.GaussianNoise;
 dropout = p.Results.DropoutRate;
 regularizer = p.Results.Regularizer;
@@ -198,7 +206,7 @@ end
 % TODO: Standardize the dataset depending on the units of the first layer
 if strcmpi(input_function, 'purelin')
     warning('Linear input units selected! Mean subtracting the dataset...');
-    X = bsxfun(@minus, X, mean(X));
+    X = bsxfun(@minus, X, mean(X)); % Subtract column means
 elseif any(strcmpi(input_function, {'logsig', 'satlin'}))
     warning('Logistic sigmoid or saturated linear input units selected! Normalizing dataset to [0,1]...');
     X = (X - min(X(:))) / (max(X(:)) - min(X(:)));
@@ -255,6 +263,7 @@ else
                 'Batches', batches_init,...
                 'ValidationFraction', val_frac,...
                 'MaskingNoise', mask_noise,...
+                'SaltPepperNoise', sp_noise,...
                 'GaussianNoise', gauss_noise,...
                 'DropoutRate', dropout,...
                 'LearningRate', learnrate,...
