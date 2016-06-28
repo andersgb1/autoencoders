@@ -29,7 +29,6 @@ optimizer = p.Results.Optimizer;
 adadelta = false;
 adam = false;
 if strcmpi(optimizer, 'sgd')
-    ;
 elseif strcmpi(optimizer, 'adadelta')
     adadelta = true;
 elseif strcmpi(optimizer, 'adam')
@@ -46,7 +45,7 @@ regularizer = p.Results.Regularizer;
 min_grad = p.Results.MinGrad;
 verbose = p.Results.Verbose;
 test_data = p.Results.TestData;
-if ~isempty(test_data),
+if ~isempty(test_data)
     assert(isfield(test_data, 'input') && isfield(test_data, 'target'),...
         'Test data must be a struct with fields input and target!');
 end
@@ -151,7 +150,7 @@ end
 
 %% TODO: Get current weights
 if gpuDeviceCount && use_gpu
-    for k=1:length(W),
+    for k=1:length(W)
         W{k}=gpuArray(W{k});
         b{k}=gpuArray(b{k});
     end
@@ -173,9 +172,8 @@ for epoch = iter:max_epochs
     end
     
     
-    % Shuffle inputs
-    order = randperm(Nbatch);
-    batches = batches(order);
+    % Shuffle batches
+    batches = batches(randperm(Nbatch));
     
     % Loop over batches
     lossbatch = zeros(1, Nbatch);
@@ -192,6 +190,7 @@ for epoch = iter:max_epochs
             'DropoutRate', dropout, 'Normalization', 'batch');
         for k=1:length(W)
             if adadelta
+                assert(exist('EWgrad', 'var')>0, 'No AdaDelta information available!')
                 % Adadelta step, weights
                 EWgrad{k} = momentum * EWgrad{k} + (1 - momentum) * dW{k}.^2;
                 Winc{k} = -sqrt(EWdelta{k} + 1e-6) ./ sqrt(EWgrad{k} + 1e-6) .* dW{k};
@@ -201,6 +200,7 @@ for epoch = iter:max_epochs
                 binc{k} = -sqrt(Ebdelta{k} + 1e-6) ./ sqrt(Ebgrad{k} + 1e-6) .* db{k};
                 Ebdelta{k} = momentum * Ebdelta{k} + (1 - momentum) * binc{k}.^2;
             elseif adam
+                assert(exist('adam_mW', 'var')>0, 'No Adam information available!')
                 alpha = 0.001;
                 beta1 = momentum;
                 beta2 = 0.999;
@@ -246,7 +246,7 @@ for epoch = iter:max_epochs
             plot(h1, 1:j, lossbatch(1:j), '-k')
             xlim(h1, [0.5 Nbatch+0.5]);
             set(h1, 'xtick', [1 Nbatch]);
-            ylim(h1, [0 inf])
+            ylim(h1, [0 1.1*max(lossbatch(1:j))])
             xlabel(h1, 'Mini-batch');
             ylabel(h1, 'Loss')
             
@@ -334,7 +334,7 @@ for epoch = iter:max_epochs
         semilogy(h3, 1:epoch, grad(1:epoch), '-k')
         xlim(h3, [0.5 epoch+0.5])
         if epoch > 1, set(h3, 'xtick', [1 epoch]); end
-        ylim(h3, [0.5*min(grad(1:epoch)) inf])
+        ylim(h3, [0.5*min(grad(1:epoch)) 1.1*max(grad(1:epoch))])
         xlabel(h3, 'Epoch');
         ylabel(h3, 'Gradient norm')
         
