@@ -41,6 +41,11 @@ function [enc,dec] = train_ae(X, num_hidden, varargin)
 %       autoencoder by introducing masking noise (randomly setting inputs
 %       to zero) in the interval [0,1[
 %
+%       'SaltPepperNoise' (0): turn the autoencoders into denoising
+%       autoencoders by introducing salt and pepper noise (randomly setting
+%       inputs to either zero or one) in the interval [0,1[ - this only
+%       applies to pretraining
+%
 %       'GaussianNoise' (0): turn the autoencoder into a denoising
 %       autoencoder by introducing Gaussian noise with a standard deviation
 %       as provided
@@ -52,7 +57,7 @@ function [enc,dec] = train_ae(X, num_hidden, varargin)
 %
 %       'Momentum' (0.9): momentum
 %
-%       'Regularizer' (0.0005): regularizer for the weight update
+%       'Regularizer' (0): regularizer for the weight update
 %
 %       'Sigma' (0): standard deviation for the random Gaussian
 %       distribution used for initializing the weights - if set to zero, it
@@ -86,11 +91,12 @@ p.addParameter('Loss', 'mse', @ischar)
 p.addParameter('Batches', {}, @iscell)
 p.addParameter('ValidationFraction', 0.1, @isnumeric)
 p.addParameter('MaskingNoise', 0, @isnumeric)
+p.addParameter('SaltPepperNoise', 0, @isnumeric)
 p.addParameter('GaussianNoise', 0, @isnumeric)
 p.addParameter('DropoutRate', 0, @isnumeric)
 p.addParameter('LearningRate', 0.1, @isnumeric)
 p.addParameter('Momentum', 0.9, @isnumeric)
-p.addParameter('Regularizer', 0.0005, @isnumeric)
+p.addParameter('Regularizer', 0, @isnumeric)
 p.addParameter('Sigma', 0, @isnumeric)
 p.addParameter('RowMajor', true, @islogical)
 p.addParameter('Width', 0, @isnumeric)
@@ -114,6 +120,8 @@ assert(val_frac >= 0 && val_frac < 1, 'Validation fraction must be a number in [
 
 mask_noise = p.Results.MaskingNoise;
 assert(mask_noise >= 0 && mask_noise < 1, 'Masking noise level must be a number in [0,1[!')
+sp_noise= p.Results.SaltPepperNoise;
+assert(sp_noise >= 0 && sp_noise < 1, 'Salt and pepper noise level must be a number in [0,1[!')
 gauss_noise = p.Results.GaussianNoise;
 dropout = p.Results.DropoutRate;
 
@@ -231,6 +239,7 @@ if verbose && max_epochs >= 1
     fprintf('Using loss function: %s\n', loss);
     if tied_weights, fprintf('Using tied weights\n'), end
     if mask_noise > 0, fprintf('Using a DAE masking noise level of: %g\n', mask_noise); end
+    if sp_noise > 0, fprintf('Using a DAE salt and pepper noise level of: %g\n', sp_noise); end
     if gauss_noise > 0, fprintf('Using a DAE Gaussian noise level of: %g\n', gauss_noise); end
     if dropout > 0, fprintf('Using a dropout rate of: %g\n', dropout); end
     if has_gpu, fprintf('Using GPU\n'), end
@@ -246,9 +255,8 @@ for epoch = 1:max_epochs
         fprintf('********** Epoch %i/%i (lr: %g, mom: %g, reg: %g, drop: %g) ********** \n', epoch, max_epochs, learning_rate, momentum, regularizer, dropout);
     end
     
-    % Shuffle X
-    order = randperm(size(X,1));
-    X = X(order,:);
+    % Shuffle batches
+    batches = batches(randperm(Nbatch));
     
     % Loop over batches
     train_numel = 0;
@@ -262,8 +270,13 @@ for epoch = 1:max_epochs
         
         %% The DAE case
         if mask_noise > 0
-            mask = binornd(1, 1-mask_noise, size(in));
-            in = mask .* in;
+            in = in .* binornd(1, 1-mask_noise, size(in));
+        end
+        
+        if sp_noise > 0
+            inrnd = binornd(1, 0.5, size(in)); % Create a full image of random 0s and 1s
+            mask = logical(binornd(1, sp_noise, size(in))); % Select a random fraction (sp_noise) of pixels
+            in(mask) = inrnd(mask); % Set selected pixels to 0 or 1
         end
         
         if gauss_noise > 0
@@ -324,32 +337,27 @@ for epoch = 1:max_epochs
         Wvis = Wvis + Wvisinc;
         
         % Bias update for visible units
-        Bvisinc = momentum * Bvisinc + learning_rate * dib;
+        Bvisinc = momentum * Bvisinc + learning_rate * ( dib - (regularizer / batch_size) * Bvis );
         Bvis = Bvis + Bvisinc;
         
         Whidinc = momentum * Whidinc + learning_rate * ( dhw - (regularizer / batch_size) * Whid );
         Whid = Whid + Whidinc;
         
         % Bias update for hidden units
-        Bhidinc = momentum * Bhidinc + learning_rate * dhb;
+        Bhidinc = momentum * Bhidinc + learning_rate * ( dhb - (regularizer / batch_size) * Bhid );
         Bhid = Bhid + Bhidinc;
         
         % Compute gradient norm
         gradbatch(i) = gather( norm([diw(:) ; dib(:) ; dhw(:) ; dhb(:)]) );
     end % End loop over batches
     
-    % Compute training error (must be done on CPU due to memory limits)
-    if has_gpu
-        in = Xcpu;
-    else
-        in = X;
-    end
-    ahid = bsxfun(@plus, gather(Wvis)*in', gather(Bvis));
+    % Compute training error
+    ahid = bsxfun(@plus, Wvis*X', Bvis);
     hid = feval(encoder_function, ahid); % Hidden
-    aout = bsxfun(@plus, gather(Whid)*hid, gather(Bhid));
+    aout = bsxfun(@plus, Whid*hid, Bhid);
     out = feval(decoder_function, aout); % Output
     
-    perf(epoch) = backprop_loss(in', out, loss);
+    perf(epoch) = backprop_loss(X', out, loss);
     grad(epoch) = mean(gradbatch);
     
     % Compute validation error
@@ -405,7 +413,7 @@ for epoch = 1:max_epochs
         % If image data
         if width > 0
             % Show first image
-            imagesc(reshape(in(1,:)', [height width]), 'parent', h3)
+            imagesc(reshape(X(1,:)', [height width]), 'parent', h3)
             colorbar(h3)
             title(h3, 'Image')
             axis(h3, 'equal', 'off')
